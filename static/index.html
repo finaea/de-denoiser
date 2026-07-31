@@ -150,6 +150,11 @@
   </div>
 
   <div class="box">
+    <h2>Rankings <span style="text-transform:none;color:#6e7681">— mean per candidate across all completed runs</span></h2>
+    <div id="rankings" class="hint">No scored runs yet.</div>
+  </div>
+
+  <div class="box">
     <h2>History</h2>
     <table>
       <thead><tr><th>run</th><th>source</th><th>duration</th><th>candidates</th><th>status</th></tr></thead>
@@ -509,9 +514,58 @@ async function loadRun(runId) {
     tr.classList.toggle("sel", tr.dataset.id === runId));
 }
 
+// --------------------------------------------------------------- rankings
+const CATEGORIES = [
+  { key: "ovrl",  label: "DNSMOS OVRL",        higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.ovrl },
+  { key: "sig",   label: "DNSMOS SIG (voice)", higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.sig },
+  { key: "bak",   label: "DNSMOS BAK (bkgd)",  higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.bak },
+  { key: "nr",    label: "Noise cut in gaps",  higher: true,  fmt: (v) => v.toFixed(1) + " dB", get: (s) => s.noise_reduction_db },
+  { key: "wer",   label: "WER (scripted)",     higher: false, fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer?.wer },
+  { key: "p95",   label: "Block p95 (offline)", higher: false, fmt: (v) => v.toFixed(2) + " ms", get: (_s, e) => e.latency?.block_ms_p95 },
+];
+
+function renderRankings(runs) {
+  const agg = {}; // cat.key -> candidateId -> {sum, n, label}
+  for (const r of runs) {
+    if (r.status !== "done") continue;
+    for (const e of r.candidates || []) {
+      if (e.status !== "done") continue;
+      const s = e.scores || {};
+      for (const cat of CATEGORIES) {
+        const v = cat.get(s, e);
+        if (v == null || !isFinite(v)) continue;
+        const bucket = ((agg[cat.key] ||= {})[e.id] ||= { sum: 0, n: 0, label: e.label });
+        bucket.sum += v; bucket.n += 1;
+      }
+    }
+  }
+  const div = $("rankings");
+  div.innerHTML = ""; div.className = "";
+  let any = false;
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px";
+  for (const cat of CATEGORIES) {
+    const rows = Object.entries(agg[cat.key] || {})
+      .map(([id, b]) => ({ id, mean: b.sum / b.n, n: b.n, label: b.label }))
+      .sort((a, b) => (cat.higher ? b.mean - a.mean : a.mean - b.mean));
+    if (!rows.length) continue;
+    any = true;
+    const box = document.createElement("div");
+    let html = `<div style="font-size:11px;color:#9aa7b4;margin-bottom:4px"><b>${cat.label}</b> ${cat.higher ? "↑" : "↓"}</div><table>`;
+    html += rows.map((r, i) =>
+      `<tr><td style="color:#6e7681">${i + 1}</td><td style="max-width:170px;overflow:hidden;text-overflow:ellipsis">${r.id}</td>` +
+      `<td style="text-align:right">${cat.fmt(r.mean)}</td><td style="text-align:right;color:#6e7681">n=${r.n}</td></tr>`).join("");
+    box.innerHTML = html + "</table>";
+    wrap.appendChild(box);
+  }
+  if (!any) { div.className = "hint"; div.textContent = "No scored runs yet."; return; }
+  div.appendChild(wrap);
+}
+
 // ---------------------------------------------------------------- history
 async function loadHistory() {
   const runs = await api("/api/runs");
+  renderRankings(runs);
   const tb = $("histBody");
   tb.innerHTML = "";
   for (const r of runs) {
