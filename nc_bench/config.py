@@ -31,7 +31,13 @@ HECTTOR_ENHANCER_WEIGHT = float(_get("HECTTOR_ENHANCER_WEIGHT", "1.0"))
 HECTTOR_SAMPLE_RATE = int(_get("HECTTOR_SAMPLE_RATE", "16000"))
 HECTTOR_CHUNK_MS = int(_get("HECTTOR_CHUNK_MS", "20"))
 
+MODELS_DIR = (PROJECT_ROOT / _get("MODELS_DIR", "./models")).resolve()
 DTLN_MODEL_DIR = (PROJECT_ROOT / _get("DTLN_MODEL_DIR", "./models/dtln")).resolve()
+# ffmpeg's arnndn needs a weights file; sh = "somnolent hogwash" (general speech)
+RNNOISE_MODEL = _get("RNNOISE_MODEL", "sh")
+# Hush: max attenuation in dB — 100 is their "unlimited" default, and 0 means
+# *no* attenuation (i.e. passthrough), so don't set this to 0 expecting "off"
+HUSH_ATTEN_LIM_DB = float(_get("HUSH_ATTEN_LIM_DB", "100"))
 
 AIC_LICENSE_KEY = _get("AIC_LICENSE_KEY")
 AIC_MODEL_ID = _get("AIC_MODEL_ID")

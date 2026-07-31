@@ -157,6 +157,54 @@ def wer(reference: str, hypothesis: str) -> dict | None:
     return {"wer": round(errors / len(ref), 3), "errors": errors, "ref_words": len(ref)}
 
 
+# ------------------------------------------------------- measured bandwidth
+
+
+_BAND_FLOOR_DB = 40.0  # a codec cliff is 50+ dB down; mic HF hiss stays inside 35
+
+
+def bandwidth_hz(audio: np.ndarray, rate: int) -> float | None:
+    """Highest frequency still carrying real signal — the band's rolloff edge.
+
+    The file's sample rate says nothing about its band: LiveKit hands every track
+    over at 48 kHz, so an 8 kHz G.711 call arrives as a 48 kHz wav with ~3.4 kHz
+    of content in it. This measures what's actually there — ~4 kHz for a PSTN
+    call, ~7 kHz for a wideband trunk, 14 kHz+ for a browser mic — which decides
+    whether a narrowband model was given a fair fight.
+
+    Deliberately *not* "the frequency holding 99% of the energy": speech puts
+    ~98% of its energy below 1 kHz, so that measure sits right on a knee and
+    swings by 8 kHz on a rounding error. Instead: average the spectrum over the
+    loud frames only (so room tone can't set the answer), take the 300-1000 Hz
+    level as the in-band reference, and walk down from Nyquist for the first
+    frequency within _BAND_FLOOR_DB of it. A codec cutoff is a 50+ dB cliff, so
+    the two cases separate by a wide margin rather than a tuned threshold.
+    """
+    n_fft = 1024
+    hop = n_fft // 2
+    if len(audio) < n_fft:
+        return None
+    win = np.hanning(n_fft).astype(np.float32)
+    frames = np.array([audio[i : i + n_fft] for i in range(0, len(audio) - n_fft, hop)])
+    if not len(frames):
+        return None
+    rms = np.sqrt((frames.astype(np.float64) ** 2).mean(axis=1))
+    loud = rms >= max(rms.max() * 0.2, 1e-6)  # within ~14 dB of the loudest frame
+    if not loud.any():
+        return None
+    power = (np.abs(np.fft.rfft(frames[loud] * win, axis=1)) ** 2).mean(axis=0)
+    hz = np.arange(len(power)) * rate / n_fft
+    db = 10 * np.log10(np.maximum(power, 1e-20))
+    # smooth over ~5 bins so a single noisy bin can't set the edge
+    db = np.convolve(db, np.ones(5) / 5, mode="same")
+    in_band = (hz >= 300) & (hz <= 1000)
+    if not in_band.any():
+        return None
+    ref = float(np.median(db[in_band]))
+    above = np.flatnonzero(db >= ref - _BAND_FLOOR_DB)
+    return round(float(hz[above[-1]])) if len(above) else None
+
+
 # ------------------------------------------------------------- entrypoints
 
 
@@ -172,14 +220,21 @@ def load_16k(path: Path) -> np.ndarray:
 
 
 def score_input(input_wav: Path) -> dict:
-    """Once per run: DNSMOS + VAD gaps + noise floor of the raw input."""
+    """Once per run: DNSMOS + VAD gaps + noise floor + measured band of the raw input."""
+    import soundfile as sf
+
     audio = load_16k(input_wav)
     gaps = gap_windows(audio)
+    # measured at the file's own rate, not resampled: a 16 kHz view would clip
+    # every wideband recording to 8 kHz and hide the difference we're after
+    native, native_rate = sf.read(input_wav, dtype="float32", always_2d=True)
     return {
         "dnsmos": _dnsmos(audio),
         "gaps": gaps,
         "gap_total_s": round(sum(g1 - g0 for g0, g1 in gaps), 2),
         "gap_rms_db": gap_rms_db(audio, gaps),
+        "bandwidth_hz": bandwidth_hz(native.mean(axis=1), native_rate),
+        "file_rate": native_rate,
     }
 
 
@@ -187,7 +242,9 @@ def score_output(output_wav: Path, input_scores: dict,
                  reference_script: str = "", transcript: str = "") -> dict:
     """Per candidate: DNSMOS, gap-RMS delta vs input, WER vs script."""
     audio = load_16k(output_wav)
-    scores: dict = {"dnsmos": _dnsmos(audio)}
+    # outputs are all 16 kHz, so this caps at 8 kHz — enough to catch a model
+    # that band-limits what it hands to STT
+    scores: dict = {"dnsmos": _dnsmos(audio), "bandwidth_hz": bandwidth_hz(audio, _FS)}
     gaps = input_scores.get("gaps") or []
     out_db = gap_rms_db(audio, gaps)
     in_db = input_scores.get("gap_rms_db")

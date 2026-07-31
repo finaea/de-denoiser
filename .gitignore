@@ -4,3 +4,10 @@ data/
 __pycache__/
 *.pyc
 .DS_Store
+models/dpdfnet/
+models/gtcrn/
+models/ulunas/
+models/fastenhancer/
+models/rnnoise/
+models/aic/
+models/hush/

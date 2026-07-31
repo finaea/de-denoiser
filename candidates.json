@@ -25,14 +25,94 @@
     "chain": [{ "proc": "hecttor", "model": "crest-2.0" }]
   },
   {
+    "id": "hecttor-crest1",
+    "label": "Hecttor crest-1.0",
+    "chain": [{ "proc": "hecttor", "model": "crest-1.0" }]
+  },
+  {
+    "id": "hecttor-mist",
+    "label": "Hecttor mist-1.0",
+    "chain": [{ "proc": "hecttor", "model": "mist-1.0" }]
+  },
+  {
+    "id": "dpdfnet2-8k",
+    "label": "DPDFNet-2 @ native 8 kHz (enhance before upsampling)",
+    "chain": [{ "proc": "specnc", "model": "dpdfnet2-8k" }]
+  },
+  {
+    "id": "dpdfnet8-8k",
+    "label": "DPDFNet-8 @ native 8 kHz (enhance before upsampling)",
+    "chain": [{ "proc": "specnc", "model": "dpdfnet8-8k" }]
+  },
+  {
+    "id": "dpdfnet2",
+    "label": "DPDFNet-2 @ 16 kHz",
+    "chain": [{ "proc": "specnc", "model": "dpdfnet2" }]
+  },
+  {
+    "id": "dpdfnet8",
+    "label": "DPDFNet-8 @ 16 kHz",
+    "chain": [{ "proc": "specnc", "model": "dpdfnet8" }]
+  },
+  {
+    "id": "dpdfnet-baseline",
+    "label": "DPDFNet baseline (cheapest of the family, 16 kHz)",
+    "chain": [{ "proc": "specnc", "model": "dpdfnet-baseline" }]
+  },
+  {
+    "id": "gtcrn",
+    "label": "GTCRN (23.7 k params, 16 kHz)",
+    "chain": [{ "proc": "specnc", "model": "gtcrn" }]
+  },
+  {
+    "id": "ulunas",
+    "label": "UL-UNAS (ultra-light, 16 kHz)",
+    "chain": [{ "proc": "specnc", "model": "ulunas" }]
+  },
+  {
+    "id": "fastenhancer-t",
+    "label": "FastEnhancer-T (tiny, 16 kHz)",
+    "chain": [{ "proc": "fastenhancer", "model": "fastenhancer-t" }]
+  },
+  {
+    "id": "fastenhancer-s",
+    "label": "FastEnhancer-S (16 kHz)",
+    "chain": [{ "proc": "fastenhancer", "model": "fastenhancer-s" }]
+  },
+  {
+    "id": "fastenhancer-l",
+    "label": "FastEnhancer-L (largest, 16 kHz)",
+    "chain": [{ "proc": "fastenhancer", "model": "fastenhancer-l" }]
+  },
+  {
+    "id": "hush",
+    "label": "Hush / Weya NC (open background-SPEAKER suppression, 16 kHz native)",
+    "chain": [{ "proc": "hush" }]
+  },
+  {
+    "id": "hush-atten12",
+    "label": "Hush @ 12 dB attenuation cap",
+    "chain": [{ "proc": "hush", "atten_lim_db": 12 }]
+  },
+  {
     "id": "dtln",
     "label": "DTLN (open, suppression only)",
     "chain": [{ "proc": "dtln" }]
   },
   {
-    "id": "dtln+hecttor-coda-vi",
-    "label": "DTLN → Hecttor coda-vi-1.0 (combo)",
-    "chain": [{ "proc": "dtln" }, { "proc": "hecttor", "model": "coda-vi-1.0" }]
+    "id": "rnnoise-sh",
+    "label": "RNNoise sh (baseline · ffmpeg arnndn, whole-file)",
+    "chain": [{ "proc": "rnnoise", "model": "sh" }]
+  },
+  {
+    "id": "rnnoise-bd",
+    "label": "RNNoise bd (baseline · ffmpeg arnndn, whole-file)",
+    "chain": [{ "proc": "rnnoise", "model": "bd" }]
+  },
+  {
+    "id": "aic-sdk",
+    "label": "ai-coustics standalone SDK (offline, own trial key from .env)",
+    "chain": [{ "proc": "aic" }]
   },
   {
     "id": "krisp-nc",
@@ -65,8 +145,8 @@
     "lk_model": "AIC:QUAIL_VF_L"
   },
   {
-    "id": "aic-sdk",
-    "label": "ai-coustics standalone SDK (offline, own trial key from .env)",
-    "chain": [{ "proc": "aic" }]
+    "id": "dtln+hecttor-coda-vi",
+    "label": "DTLN → Hecttor coda-vi-1.0 (combo)",
+    "chain": [{ "proc": "dtln" }, { "proc": "hecttor", "model": "coda-vi-1.0" }]
   }
 ]

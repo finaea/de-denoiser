@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+import soxr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -35,6 +36,109 @@ def gap_rms(path: Path) -> float:
     t = np.arange(len(x)) / r
     gaps = np.sin(2 * np.pi * 2.5 * t) <= -0.5  # well inside the silent half
     return float(np.sqrt((x[gaps] ** 2).mean()))
+
+
+class _EchoSession:
+    """Stands in for an ONNX session: returns the frame unchanged + caches as-is."""
+
+    def __init__(self, spec_name: str):
+        self._spec_name = spec_name
+
+    def run(self, _outputs, feeds):  # noqa: ANN001 - mirrors ort's signature
+        spec = feeds[self._spec_name]
+        caches = [v for k, v in feeds.items() if k != self._spec_name]
+        return [spec, *caches]
+
+
+def check_spec_reconstruction() -> None:
+    """With the model bypassed, analysis -> OLA must reproduce the input exactly.
+
+    This is what proves the window choice (vorbis / hann-sqrt / hann) and the
+    window-squared normalisation are right per model — a wrong window still
+    "cuts noise", it just eats the speech with it.
+    """
+    from nc_bench.processors.spec_onnx import _MODELS, SpecOnnxProcessor, spec_onnx_available
+
+    rng = np.random.default_rng(3)
+    checked = 0
+    for name in _MODELS:
+        ok, why = spec_onnx_available(name)
+        if not ok:
+            print(f"SKIP recon {name}: {why}")
+            continue
+        p = SpecOnnxProcessor(name)
+        p._sess = _EchoSession(p._spec_name)
+        x = (0.2 * rng.standard_normal(p.rate)).astype(np.float32)
+        step = max(1, p.rate // 50)  # 20 ms blocks, like the pipeline
+        outs = [p.process_block(x[i : i + step]) for i in range(0, len(x), step)]
+        outs.append(p.flush())
+        y = np.concatenate([o for o in outs if len(o)])
+        assert len(y) == len(x), f"{name}: recon length {len(y)} != {len(x)}"
+        err = float(np.abs(y - x).max())
+        assert err < 1e-4, f"{name}: reconstruction error {err:.2e} (window/OLA wrong?)"
+        print(f"OK   recon {name}: max err {err:.2e}")
+        checked += 1
+    assert checked >= 1, "no spec-onnx model available to check"
+
+
+# Measured output shift, in ms, of each candidate against its input (2026-07-31,
+# probe below). 0 = the wrapper emits sample-aligned audio. Non-zero is the
+# model holding audio back internally: DPDFNet's deep-filter stage 40 ms, DTLN's
+# canonical overlap-add loop 24 ms, ffmpeg's arnndn one 48 kHz frame.
+_EXPECTED_LAG_MS = {
+    "fastenhancer-t": 0.0,
+    "fastenhancer-s": 0.0,
+    "fastenhancer-l": 0.0,
+    "gtcrn": 0.0,
+    "ulunas": 0.0,
+    "dpdfnet2": 40.0,
+    "dpdfnet2-8k": 40.0,
+    "dtln": 24.0,
+    "rnnoise-sh": 10.0,
+    # 10 ms of internal shift + its 10 ms frame = the ~20 ms its README claims
+    "hush": 10.0,
+}
+
+
+def check_alignment(tmp: Path, candidates: list[dict]) -> None:
+    """Pin each candidate's output shift against the input.
+
+    Scoring compares gap windows by time, so a shift that grows silently (a
+    forgotten lookahead-skip: FastEnhancer's raw output lags by n_fft - hop,
+    256 samples for -T and 412 for -L) would quietly misalign every metric.
+
+    Uses modulated white noise, not the tone-based input above: a tone's
+    correlation peak repeats every period, so it cannot resolve a lag.
+    """
+    from nc_bench.pipeline import run_chain
+
+    rng = np.random.default_rng(11)
+    n = int(RATE * 2.5)
+    env = 0.5 + 0.5 * np.sin(2 * np.pi * 0.7 * np.arange(n) / RATE)
+    x = (0.15 * env * rng.standard_normal(n)).astype(np.float32)
+    src = tmp / "align_input.wav"
+    sf.write(src, x, RATE)
+
+    by_id = {c["id"]: c for c in candidates}
+    for cid, expected_ms in _EXPECTED_LAG_MS.items():
+        cand = by_id.get(cid)
+        if not cand or not chain_available(cand["chain"])[0]:
+            continue
+        out = tmp / f"align_{cid}.wav"
+        timing = run_chain(src, cand["chain"], out)
+        y, r = sf.read(out, dtype="float32")
+        xr = soxr.resample(x, RATE, r).astype(np.float32)
+        span = min(len(xr), len(y), 2 * r)
+        c = np.correlate(y[:span] - y[:span].mean(), xr[:span] - xr[:span].mean(), mode="full")
+        lag_ms = (int(np.argmax(c)) - (span - 1)) / r * 1000
+        # 2 ms of slack for resampler group delay; a missed skip is 16-26 ms
+        assert abs(lag_ms - expected_ms) <= 2, (
+            f"{cid}: output shift {lag_ms:.1f} ms, expected {expected_ms:.1f} ms"
+        )
+        print(
+            f"OK   align {cid}: shift {lag_ms:.1f} ms "
+            f"(reported algo delay {timing['latency']['algo_delay_ms']} ms)"
+        )
 
 
 def main() -> None:
@@ -70,8 +174,17 @@ def main() -> None:
         )
         assert np.abs(x).max() > 1e-4, f"{cand['id']}: output is silence"
         g = gap_rms(out)
-        if cand["chain"]:  # any real NC should cut noise in the gaps
-            assert g < base_gap, f"{cand['id']}: gap rms {g:.4f} not below input {base_gap:.4f}"
+        if not cand["chain"]:
+            # the passthrough candidate is the bar: it already drops the noise
+            # above 8 kHz (48k input -> 16k output), so comparing a real NC to
+            # the *input* would let a do-nothing chain pass (it did: Hush with
+            # atten_lim_db=0 is a passthrough, and only this caught it)
+            passthrough_gap = g
+        else:
+            assert g < 0.9 * passthrough_gap, (
+                f"{cand['id']}: gap rms {g:.4f} is not meaningfully below the "
+                f"passthrough's {passthrough_gap:.4f} — is this chain doing anything?"
+            )
         print(
             f"OK   {cand['id']}: {timing['proc_ms']} ms, rtf={timing['rtf']}, "
             f"gap-rms {base_gap:.4f} -> {g:.4f}"
@@ -79,6 +192,9 @@ def main() -> None:
         ran += 1
 
     assert ran >= 1, "no candidate could run"
+
+    check_spec_reconstruction()
+    check_alignment(tmp, candidates)
 
     # ---- scoring stack ----
     from nc_bench import scoring
@@ -89,6 +205,17 @@ def main() -> None:
     w = scoring.wer("the quick brown fox", "the quack fox jumps")
     assert w["wer"] == 0.75 and w["ref_words"] == 4, w  # sub, del, ins
     assert scoring.wer("", "anything") is None
+
+    # Measured band: the whole point is telling a phone call from a mic
+    # recording when both arrive as 48 kHz wavs, so check both ends.
+    rng = np.random.default_rng(5)
+    wide = (0.2 * rng.standard_normal(RATE * 2)).astype(np.float32)
+    narrow = soxr.resample(soxr.resample(wide, RATE, 8000), 8000, RATE).astype(np.float32)
+    bw_wide = scoring.bandwidth_hz(wide, RATE)
+    bw_narrow = scoring.bandwidth_hz(narrow, RATE)
+    assert bw_wide > 16_000, f"full-band read as {bw_wide} Hz"
+    assert 3000 < bw_narrow < 4600, f"8 kHz round trip read as {bw_narrow} Hz"
+    print(f"band OK: full-band {bw_wide} Hz, 8 kHz round trip {bw_narrow} Hz")
 
     # DNSMOS + VAD gap plumbing on the synthetic input (semantics need real
     # speech; here we assert shapes, ranges, and that gaps exist in tone+noise)

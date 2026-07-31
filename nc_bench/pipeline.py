@@ -63,7 +63,9 @@ def run_chain(input_wav: Path, chain_spec: list[dict], output_wav: Path) -> dict
     audio = np.clip(audio, -1.0, 1.0)
     sf.write(output_wav, (audio * 32767).astype(np.int16), config.PIPELINE_RATE)
 
-    bt = np.array(block_times) * 1000
+    # whole-file stages (e.g. ffmpeg arnndn) do their work in flush(), so
+    # per-block numbers would flatter them — report none for the whole chain
+    bt = np.array([] if any(p.whole_file for p in procs) else block_times) * 1000
     return {
         "proc_ms": round(proc_s * 1000, 1),
         "rtf": round(proc_s / duration_s, 4) if duration_s > 0 else None,

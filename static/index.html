@@ -150,8 +150,8 @@
   </div>
 
   <div class="box">
-    <h2>Rankings <span style="text-transform:none;color:#6e7681">— mean per candidate across all completed runs</span></h2>
-    <div id="rankings" class="hint">No scored runs yet.</div>
+    <h2>Rankings <span id="rankRun" style="text-transform:none;color:#6e7681">— within one run, never across runs</span></h2>
+    <div id="rankings" class="hint">No run selected.</div>
   </div>
 
   <div class="box">
@@ -436,6 +436,7 @@ function renderCandidateCard(runId, e) {
         ? `<b>noise in gaps</b> ${s.noise_reduction_db >= 0 ? "−" : "+"}${Math.abs(s.noise_reduction_db)} dB`
         : `gap-RMS n/a (no confident speech gaps)`);
       if (s.wer) bits.push(`<b>WER</b> ${(s.wer.wer * 100).toFixed(1)}% (${s.wer.errors}/${s.wer.ref_words} words)`);
+      if (s.bandwidth_hz != null) bits.push(`<b>band</b> ${(s.bandwidth_hz / 1000).toFixed(1)} kHz`);
       html += `<div class="meta" style="margin-top:6px">${bits.join(" &nbsp;|&nbsp; ")}</div>`;
     } else if (e.scores_error) {
       html += `<div class="err">scoring failed: ${e.scores_error}</div>`;
@@ -453,6 +454,21 @@ function renderCandidateCard(runId, e) {
   if (e.output) drawWave(fileUrl(e.output), "wave-" + e.id);
 }
 
+// The container rate lies: LiveKit hands every track over at 48 kHz, so an
+// 8 kHz phone call arrives as a 48 kHz wav. This is what's measurably in it —
+// the rolloff edge, i.e. the highest frequency still carrying real signal.
+function bandLabel(hz, fileRate) {
+  const capped = fileRate && hz >= fileRate * 0.47;
+  const kind = hz < 4600 ? "narrowband — PSTN / G.711 territory"
+    : hz < 8200 ? "wideband — G.722 / Opus trunk"
+    : "full-band — real mic capture";
+  const note = capped ? ` (up to the file's own ${(fileRate / 1000).toFixed(0)} kHz ceiling)` : "";
+  const warn = hz >= 4600
+    ? ' <span style="color:#d29922">· narrowband models are handicapped here — downsampling to 8 kHz throws away real speech</span>'
+    : "";
+  return `<b>measured band</b> ${(hz / 1000).toFixed(1)} kHz${note} · ${kind}${warn}`;
+}
+
 function renderInputCard(runId, meta) {
   if (!meta.input || !meta.input.file) return;
   const div = $("results");
@@ -467,6 +483,9 @@ function renderInputCard(runId, meta) {
       ? `<b>noise floor</b> ${is.gap_rms_db} dBFS over ${is.gap_total_s}s of gaps`
       : "no confident speech gaps found");
     inScores = `<div class="meta" style="margin-top:6px">${parts.join(" &nbsp;|&nbsp; ")}</div>`;
+    if (is.bandwidth_hz != null) {
+      inScores += `<div class="meta">${bandLabel(is.bandwidth_hz, is.file_rate)}</div>`;
+    }
   }
   card.innerHTML = `<div class="head"><span class="name">Input (raw subscriber)</span>
       <span class="meta">${meta.input.duration_s}s · ${meta.input.sample_rate} Hz
@@ -510,6 +529,7 @@ async function loadRun(runId) {
   $("results").innerHTML = "";
   for (const e of meta.candidates || []) renderCandidateCard(runId, e);
   renderInputCard(runId, meta);
+  renderRankings(runId, meta);
   document.querySelectorAll("tr.run").forEach((tr) =>
     tr.classList.toggle("sel", tr.dataset.id === runId));
 }
@@ -524,48 +544,59 @@ const CATEGORIES = [
   { key: "p95",   label: "Block p95 (offline)", higher: false, fmt: (v) => v.toFixed(2) + " ms", get: (_s, e) => e.latency?.block_ms_p95 },
 ];
 
-function renderRankings(runs) {
-  const agg = {}; // cat.key -> candidateId -> {sum, n, label}
-  for (const r of runs) {
-    if (r.status !== "done") continue;
-    for (const e of r.candidates || []) {
-      if (e.status !== "done") continue;
-      const s = e.scores || {};
-      for (const cat of CATEGORIES) {
-        const v = cat.get(s, e);
-        if (v == null || !isFinite(v)) continue;
-        const bucket = ((agg[cat.key] ||= {})[e.id] ||= { sum: 0, n: 0, label: e.label });
-        bucket.sum += v; bucket.n += 1;
-      }
-    }
-  }
+// Ranked inside ONE run only. Averaging across runs would rank the audio, not
+// the models: every run is a different recording, and each run scores only the
+// candidates that were ticked for it.
+function renderRankings(runId, meta) {
   const div = $("rankings");
+  const done = (meta.candidates || []).filter((e) => e.status === "done");
+  $("rankRun").textContent = "— within run " + runId + ", never across runs";
   div.innerHTML = ""; div.className = "";
-  let any = false;
+  if (done.length < 2) {
+    div.className = "hint";
+    div.textContent = "This run has fewer than two scored candidates — nothing to rank.";
+    return;
+  }
+  const control = done.find((e) => e.id === "none");
   const wrap = document.createElement("div");
-  wrap.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px";
+  wrap.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px";
+  let any = false;
   for (const cat of CATEGORIES) {
-    const rows = Object.entries(agg[cat.key] || {})
-      .map(([id, b]) => ({ id, mean: b.sum / b.n, n: b.n, label: b.label }))
-      .sort((a, b) => (cat.higher ? b.mean - a.mean : a.mean - b.mean));
-    if (!rows.length) continue;
+    const base = control ? cat.get(control.scores || {}, control) : null;
+    const rows = done
+      .map((e) => ({ id: e.id, v: cat.get(e.scores || {}, e) }))
+      .filter((r) => r.v != null && isFinite(r.v))
+      .sort((a, b) => (cat.higher ? b.v - a.v : a.v - b.v));
+    if (rows.length < 2) continue;
     any = true;
     const box = document.createElement("div");
-    let html = `<div style="font-size:11px;color:#9aa7b4;margin-bottom:4px"><b>${cat.label}</b> ${cat.higher ? "↑" : "↓"}</div><table>`;
-    html += rows.map((r, i) =>
-      `<tr><td style="color:#6e7681">${i + 1}</td><td style="max-width:170px;overflow:hidden;text-overflow:ellipsis">${r.id}</td>` +
-      `<td style="text-align:right">${cat.fmt(r.mean)}</td><td style="text-align:right;color:#6e7681">n=${r.n}</td></tr>`).join("");
+    let html = `<div style="font-size:11px;color:#9aa7b4;margin-bottom:4px"><b>${cat.label}</b> ${cat.higher ? "↑" : "↓"}`;
+    html += control ? ` <span style="color:#6e7681">· Δ vs no-NC</span>` : "";
+    html += `</div><table>`;
+    html += rows.map((r, i) => {
+      let delta = "";
+      if (base != null && isFinite(base) && r.id !== "none") {
+        const d = r.v - base;
+        const good = cat.higher ? d > 0 : d < 0;
+        const col = Math.abs(d) < 1e-9 ? "#6e7681" : good ? "#4ec9b0" : "#e06c75";
+        delta = `<span style="color:${col}">${d >= 0 ? "+" : "−"}${cat.fmt(Math.abs(d))}</span>`;
+      }
+      const mark = r.id === "none" ? ' style="color:#6e7681"' : "";
+      return `<tr><td style="color:#6e7681">${i + 1}</td>` +
+        `<td${mark} style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${r.id}</td>` +
+        `<td style="text-align:right">${cat.fmt(r.v)}</td>` +
+        `<td style="text-align:right">${delta}</td></tr>`;
+    }).join("");
     box.innerHTML = html + "</table>";
     wrap.appendChild(box);
   }
-  if (!any) { div.className = "hint"; div.textContent = "No scored runs yet."; return; }
+  if (!any) { div.className = "hint"; div.textContent = "Nothing scored in this run yet."; return; }
   div.appendChild(wrap);
 }
 
 // ---------------------------------------------------------------- history
 async function loadHistory() {
   const runs = await api("/api/runs");
-  renderRankings(runs);
   const tb = $("histBody");
   tb.innerHTML = "";
   for (const r of runs) {

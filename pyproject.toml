@@ -15,10 +15,11 @@ dependencies = [
     "onnxruntime>=1.18",
     "livekit>=1.0",
     "livekit-api>=1.0",
-    "livekit-plugins-noise-cancellation>=0.2.6",
+    "livekit-plugins-noise-cancellation==0.2.6",
     "livekit-plugins-ai-coustics>=0.3.0",
     "aic-sdk>=2.5.0",
     "hecttor-sdk",
+    "livekit-plugins-silero>=1.6.7",
 ]
 
 [tool.uv.sources]
