@@ -1,0 +1,28 @@
+[project]
+name = "nc-bench-ui"
+version = "0.1.0"
+description = "NC candidate bench web UI: record phone/web/upload audio, run it through noise-cancellation chains, compare STT + audio"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.9",
+    "aiohttp>=3.10",
+    "numpy>=1.26",
+    "soundfile>=0.12",
+    "soxr>=0.5",
+    "onnxruntime>=1.18",
+    "livekit>=1.0",
+    "livekit-api>=1.0",
+    "livekit-plugins-noise-cancellation>=0.2.6",
+    "livekit-plugins-ai-coustics>=0.3.0",
+    "aic-sdk>=2.5.0",
+    "hecttor-sdk",
+]
+
+[tool.uv.sources]
+hecttor-sdk = { path = "vendor/hecttor_sdk-3.1.1-cp312-cp312-macosx_15_0_arm64.whl" }
+
+[tool.uv]
+package = false

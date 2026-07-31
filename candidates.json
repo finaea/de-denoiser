@@ -1,0 +1,72 @@
+[
+  {
+    "id": "none",
+    "label": "No NC (passthrough)",
+    "chain": []
+  },
+  {
+    "id": "hecttor-coda-vi",
+    "label": "Hecttor coda-vi-1.0 (voice isolation)",
+    "chain": [{ "proc": "hecttor", "model": "coda-vi-1.0" }]
+  },
+  {
+    "id": "hecttor-coda-vi-w075",
+    "label": "Hecttor coda-vi-1.0 @ weight 0.75",
+    "chain": [{ "proc": "hecttor", "model": "coda-vi-1.0", "enhancer_weight": 0.75 }]
+  },
+  {
+    "id": "hecttor-coda",
+    "label": "Hecttor coda-1.0 (suppression only)",
+    "chain": [{ "proc": "hecttor", "model": "coda-1.0" }]
+  },
+  {
+    "id": "hecttor-crest2",
+    "label": "Hecttor crest-2.0",
+    "chain": [{ "proc": "hecttor", "model": "crest-2.0" }]
+  },
+  {
+    "id": "dtln",
+    "label": "DTLN (open, suppression only)",
+    "chain": [{ "proc": "dtln" }]
+  },
+  {
+    "id": "dtln+hecttor-coda-vi",
+    "label": "DTLN → Hecttor coda-vi-1.0 (combo)",
+    "chain": [{ "proc": "dtln" }, { "proc": "hecttor", "model": "coda-vi-1.0" }]
+  },
+  {
+    "id": "krisp-nc",
+    "label": "Krisp NC (LiveKit Cloud · live only)",
+    "lk_model": "NC"
+  },
+  {
+    "id": "krisp-bvc",
+    "label": "Krisp BVC (LiveKit Cloud · live only)",
+    "lk_model": "BVC"
+  },
+  {
+    "id": "krisp-bvc-tel",
+    "label": "Krisp BVCTelephony (LiveKit Cloud · live only)",
+    "lk_model": "BVCTelephony"
+  },
+  {
+    "id": "aic-quail-l",
+    "label": "ai-coustics QUAIL_L — noise suppression (LiveKit Cloud · live only)",
+    "lk_model": "AIC:QUAIL_L"
+  },
+  {
+    "id": "aic-vf-s",
+    "label": "ai-coustics Voice Focus S (QUAIL_VF_S) — voice isolation (LiveKit Cloud · live only)",
+    "lk_model": "AIC:QUAIL_VF_S"
+  },
+  {
+    "id": "aic-vf-l",
+    "label": "ai-coustics Voice Focus L (QUAIL_VF_L) — voice isolation (LiveKit Cloud · live only)",
+    "lk_model": "AIC:QUAIL_VF_L"
+  },
+  {
+    "id": "aic-sdk",
+    "label": "ai-coustics standalone SDK (offline, own trial key from .env)",
+    "chain": [{ "proc": "aic" }]
+  }
+]

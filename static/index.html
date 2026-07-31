@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NC Bench</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0d1117; color: #e6edf3;
+  }
+  h1 { font-size: 16px; margin: 0; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: #6e7681; margin: 0 0 6px; }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    border-bottom: 1px solid #21262d; position: sticky; top: 0; background: #0d1117; z-index: 5;
+    flex-wrap: wrap;
+  }
+  .layout { display: flex; gap: 14px; padding: 14px 16px; align-items: flex-start; }
+  aside {
+    flex: 0 0 280px; position: sticky; top: 54px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+  .box { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 12px; }
+
+  button {
+    border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; font: inherit;
+    background: #21262d; color: #e6edf3; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #30363d; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: #238636; border-color: #2ea043; }
+  button.danger { background: #da3633; border-color: #f85149; }
+  .btnrow { display: flex; gap: 8px; }
+  .btnrow button { flex: 1; }
+
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px;
+          border: 1px solid #30363d; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill.ok { border-color: #3fb950; color: #3fb950; }
+  .pill.warn { border-color: #d29922; color: #d29922; }
+  .pill.err { border-color: #f85149; color: #f85149; }
+  #status { font-size: 12px; color: #9aa7b4; }
+  #status.err { color: #f85149; }
+
+  .radio { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #e6edf3; cursor: pointer; margin-top: 4px; }
+  .check { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #e6edf3; cursor: pointer; margin-top: 6px; }
+  .check .why { color: #6e7681; font-size: 11px; }
+  .check input { margin-top: 2px; }
+  .hint { font-size: 11px; color: #6e7681; margin-top: 8px; }
+  .field { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+  .field label { font-size: 11px; color: #9aa7b4; }
+  input[type=file] { font-size: 11px; color: #9aa7b4; }
+
+  canvas.timeline { width: 100%; height: 140px; display: block; background: #010409;
+                    border: 1px solid #30363d; border-radius: 8px; }
+  canvas.wave { width: 100%; height: 64px; display: block; background: #010409;
+                border: 1px solid #21262d; border-radius: 6px; }
+
+  .cand-card { background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+               padding: 10px 12px; margin-top: 10px; }
+  .cand-card .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .cand-card .name { font-weight: 600; font-size: 13px; }
+  .cand-card .meta { font-size: 11px; color: #9aa7b4; font-variant-numeric: tabular-nums; }
+  .cand-card .stt {
+    margin: 8px 0; padding: 8px; background: #161b22; border-radius: 6px;
+    font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap;
+  }
+  .cand-card .stt.empty { color: #6e7681; font-style: italic; }
+  .cand-card .err { color: #f85149; font-size: 12px; margin: 6px 0; }
+  .cand-card audio { width: 100%; height: 32px; margin-top: 6px; }
+  .cand-card .dl { font-size: 11px; }
+  a { color: #58a6ff; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #21262d; font-variant-numeric: tabular-nums; }
+  th { color: #6e7681; font-weight: 600; }
+  tr.run { cursor: pointer; }
+  tr.run:hover td { background: #161b22; }
+  tr.run.sel td { background: #1c2430; }
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NC Bench</h1>
+  <span id="pillState" class="pill">idle</span>
+  <span id="pillRoom" class="pill">room: —</span>
+  <span id="pillTimer" class="pill">rec: —</span>
+  <span style="flex:1"></span>
+  <span id="status"></span>
+</header>
+
+<div class="layout">
+<aside>
+  <div class="box">
+    <div class="btnrow">
+      <button id="btnStart" class="primary">▶ Start</button>
+      <button id="btnStop" class="danger" disabled>■ Stop</button>
+    </div>
+    <div class="hint" id="runHint">Start = arm the source and record the subscriber.
+      Stop = end recording; every ticked candidate then runs (NC → STT).</div>
+  </div>
+
+  <div class="box">
+    <h2>Source</h2>
+    <label class="radio"><input type="radio" name="source" value="phone" checked />
+      Phone call (inbound agent)</label>
+    <label class="radio"><input type="radio" name="source" value="web" />
+      Web call (browser mic)</label>
+    <label class="radio"><input type="radio" name="source" value="upload" />
+      Upload audio file</label>
+    <div class="hint" id="srcHint">Phone: press Start first, then dial in — the first
+      inbound call on this LiveKit project is picked up automatically. No number needed.</div>
+    <div class="field" id="uploadField" style="display:none">
+      <label>Audio file (wav/mp3/m4a/ogg/flac — anything ffmpeg reads)</label>
+      <input type="file" id="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aac,.opus,.webm" />
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>Reference script (optional)</h2>
+    <textarea id="script" placeholder="Type/paste exactly what will be (or was) said. If set, each candidate gets a real WER score against it."
+      style="width:100%;min-height:64px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,monospace;resize:vertical"></textarea>
+    <div class="hint">Best used with a scripted test call — read this text during the recording.</div>
+  </div>
+
+  <div class="box">
+    <h2>Candidates</h2>
+    <div id="candList" class="hint">loading…</div>
+    <div class="hint">Tick what to run this session — singles or chains. Edit
+      <code>candidates.json</code> to add combos; restart to reload.</div>
+  </div>
+</aside>
+
+<main>
+  <div class="box">
+    <h2>Subscriber timeline</h2>
+    <canvas id="timeline" class="timeline" width="1600" height="280"></canvas>
+    <div class="hint" id="tlHint">Live RMS of the subscribed track (20 ms windows).</div>
+  </div>
+
+  <div class="box">
+    <h2>Results <span id="resRun" style="text-transform:none;color:#9aa7b4"></span></h2>
+    <div id="results"><div class="hint">No run selected. Record, upload, or pick one from history.</div></div>
+  </div>
+
+  <div class="box">
+    <h2>History</h2>
+    <table>
+      <thead><tr><th>run</th><th>source</th><th>duration</th><th>candidates</th><th>status</th></tr></thead>
+      <tbody id="histBody"></tbody>
+    </table>
+  </div>
+</main>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const state = {
+  phase: "idle",          // idle | armed | recording | processing
+  levels: [],             // {t, rms, peak}
+  lkRoom: null,           // livekit-client Room (web mode)
+  selectedRun: null,
+  candidates: [],
+};
+
+// ---------------------------------------------------------------- helpers
+function setStatus(msg, err = false) {
+  $("status").textContent = msg || "";
+  $("status").className = err ? "err" : "";
+}
+function setPhase(p, pillText) {
+  state.phase = p;
+  const pill = $("pillState");
+  pill.textContent = pillText || p;
+  pill.className = "pill " + (p === "recording" ? "ok" : p === "processing" ? "warn" : "");
+  $("btnStart").disabled = p !== "idle";
+  $("btnStop").disabled = !(p === "armed" || p === "recording");
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    let detail = r.statusText;
+    try { detail = (await r.json()).detail || detail; } catch {}
+    throw new Error(detail);
+  }
+  return r.json();
+}
+
+// ------------------------------------------------------------- candidates
+async function loadCandidates() {
+  state.candidates = await api("/api/candidates");
+  const div = $("candList");
+  div.innerHTML = "";
+  div.className = "";
+  const isCombo = (c) => (c.chain || []).length > 1;
+  const singles = state.candidates.filter((c) => !isCombo(c));
+  const combos = state.candidates.filter(isCombo);
+  const addDivider = () => {
+    const hr = document.createElement("div");
+    hr.style.cssText = "border-top:1px solid #30363d; margin:10px 0 4px;";
+    div.appendChild(hr);
+  };
+  for (const c of [...singles, null, ...combos]) {
+    if (c === null) { if (combos.length) addDivider(); continue; }
+    const lab = document.createElement("label");
+    lab.className = "check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = c.id;
+    cb.dataset.liveOnly = c.live_only ? "1" : "";
+    cb.checked = c.available && (c.id === "none" || c.id === "hecttor-coda-vi");
+    cb.disabled = !c.available;
+    const span = document.createElement("span");
+    span.textContent = c.label;
+    if (!c.available) {
+      span.innerHTML += ` <span class="why">— unavailable: ${c.unavailable_reason}</span>`;
+    }
+    lab.append(cb, span);
+    div.appendChild(lab);
+  }
+  applyLiveOnly();
+}
+function applyLiveOnly() {
+  // live-rail candidates (Krisp on Cloud) can't process uploads
+  const src = document.querySelector('input[name="source"]:checked').value;
+  document.querySelectorAll('#candList input[data-live-only="1"]').forEach((cb) => {
+    const c = state.candidates.find((x) => x.id === cb.value);
+    if (!c || !c.available) return;
+    if (src === "upload") { cb.checked = false; cb.disabled = true; }
+    else cb.disabled = false;
+  });
+}
+function tickedCandidates() {
+  return [...document.querySelectorAll("#candList input:checked")].map((x) => x.value);
+}
+
+// ---------------------------------------------------------------- timeline
+const tl = $("timeline"), tctx = tl.getContext("2d");
+const WIN_PX = 3; // px per 20ms window
+function drawTimeline() {
+  const W = tl.width, H = tl.height;
+  tctx.fillStyle = "#010409"; tctx.fillRect(0, 0, W, H);
+  const n = Math.floor(W / WIN_PX);
+  const win = state.levels.slice(-n);
+  tctx.fillStyle = "#3fb950";
+  win.forEach((l, i) => {
+    const h = Math.max(1, (l.rms / 32768) * H * 6);
+    tctx.fillRect(i * WIN_PX, (H - Math.min(h, H)) / 2, WIN_PX - 1, Math.min(h, H));
+  });
+  if (win.length) {
+    const last = win[win.length - 1];
+    tctx.fillStyle = "#9aa7b4"; tctx.font = "20px ui-monospace";
+    tctx.fillText(`t=${last.t.toFixed(1)}s  rms=${last.rms}`, 10, 24);
+  }
+}
+setInterval(() => { if (state.phase === "recording") drawTimeline(); }, 100);
+
+// recording timer
+let recT0 = null;
+setInterval(() => {
+  $("pillTimer").textContent = "rec: " + (recT0 ? ((Date.now() - recT0) / 1000).toFixed(0) + "s" : "—");
+}, 500);
+
+// -------------------------------------------------------------- websocket
+function connectWS() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onmessage = (m) => handleEvent(JSON.parse(m.data));
+  ws.onclose = () => setTimeout(connectWS, 1500);
+  setInterval(() => { if (ws.readyState === 1) ws.send("ping"); }, 20000);
+}
+function handleEvent(ev) {
+  if (ev.type === "level") {
+    state.levels.push(ev);
+    return;
+  }
+  if (ev.type === "session") {
+    if (ev.state === "waiting_call") { setPhase("armed", "waiting for call…"); setStatus("dial in now"); }
+    if (ev.state === "call_found") { $("pillRoom").textContent = "room: " + ev.room; setStatus("call picked up: " + ev.participant); }
+    if (ev.state === "web_ready") { $("pillRoom").textContent = "room: " + ev.room; }
+    if (ev.state === "recording") { setPhase("recording"); recT0 = Date.now(); setStatus("recording subscriber"); }
+    if (ev.state === "idle") { setPhase("idle"); recT0 = null; }
+    return;
+  }
+  if (ev.type === "progress") {
+    const el = $("prog-" + ev.candidate);
+    if (el) {
+      if (ev.stage === "nc") el.innerHTML = '<span class="spin">◐</span> running NC…';
+      if (ev.stage === "stt") el.innerHTML = '<span class="spin">◐</span> transcribing…';
+    }
+    if (ev.entry) renderCandidateCard(ev.run_id, ev.entry);
+    return;
+  }
+  if (ev.type === "run_done") {
+    setPhase("idle"); recT0 = null;
+    setStatus("run " + ev.run_id + " complete");
+    loadRun(ev.run_id);
+    loadHistory();
+  }
+}
+
+// ------------------------------------------------------------- start/stop
+$("btnStart").onclick = async () => {
+  const source = document.querySelector('input[name="source"]:checked').value;
+  const cands = tickedCandidates();
+  if (!cands.length) { setStatus("tick at least one candidate", true); return; }
+  setStatus("");
+  state.levels = [];
+  try {
+    if (source === "upload") {
+      const f = $("file").files[0];
+      if (!f) { setStatus("choose a file first", true); return; }
+      setPhase("processing", "processing upload");
+      prepareResultsSkeleton(null, cands);
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("candidates", JSON.stringify(cands));
+      fd.append("script", $("script").value);
+      const res = await api("/api/upload", { method: "POST", body: fd });
+      $("resRun").textContent = "— " + res.run_id;
+      return;
+    }
+    const res = await api("/api/session/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, candidates: cands, script: $("script").value }),
+    });
+    if (source === "web") {
+      setPhase("armed", "joining room…");
+      await joinWebRoom(res);
+    } else {
+      setPhase("armed", "waiting for call…");
+    }
+  } catch (e) {
+    setPhase("idle");
+    setStatus(e.message, true);
+  }
+};
+
+$("btnStop").onclick = async () => {
+  setPhase("processing");
+  try {
+    if (state.lkRoom) { await state.lkRoom.disconnect(); state.lkRoom = null; }
+    const res = await api("/api/session/stop", { method: "POST" });
+    if (res.status === "empty") {
+      setPhase("idle"); setStatus(res.detail, true); loadHistory();
+      return;
+    }
+    $("resRun").textContent = "— " + res.run_id;
+    prepareResultsSkeleton(res.run_id, tickedCandidates());
+    setStatus("processing " + res.run_id + "…");
+  } catch (e) {
+    setPhase("idle"); setStatus(e.message, true);
+  }
+};
+
+// ------------------------------------------------------------ web (mic)
+function loadLK() {
+  return new Promise((res, rej) => {
+    if (window.LivekitClient) return res();
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/livekit-client@2.9/dist/livekit-client.umd.min.js";
+    s.onload = res;
+    s.onerror = () => rej(new Error("failed to load livekit-client from CDN"));
+    document.head.appendChild(s);
+  });
+}
+async function joinWebRoom(join) {
+  await loadLK();
+  const room = new LivekitClient.Room();
+  await room.connect(join.livekit_url, join.token);
+  // raw-ish mic: NC testing wants the noise KEPT — disable browser DSP
+  const track = await LivekitClient.createLocalAudioTrack({
+    echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+  });
+  await room.localParticipant.publishTrack(track);
+  state.lkRoom = room;
+  setStatus("mic published (browser DSP off) — speak, then Stop");
+}
+
+// ---------------------------------------------------------------- results
+function prepareResultsSkeleton(runId, candIds) {
+  const div = $("results");
+  div.innerHTML = "";
+  for (const cid of candIds) {
+    const c = state.candidates.find((x) => x.id === cid);
+    const card = document.createElement("div");
+    card.className = "cand-card";
+    card.id = "card-" + cid;
+    card.innerHTML = `<div class="head"><span class="name">${c ? c.label : cid}</span>
+      <span class="meta" id="prog-${cid}"><span class="spin">◐</span> queued</span></div>`;
+    div.appendChild(card);
+  }
+}
+
+function renderCandidateCard(runId, e) {
+  let card = $("card-" + e.id);
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "cand-card";
+    card.id = "card-" + e.id;
+    $("results").appendChild(card);
+  }
+  const fileUrl = (n) => `/api/runs/${runId}/files/${n}`;
+  let html = `<div class="head"><span class="name">${e.label}</span>`;
+  if (e.status === "done") {
+    html += `<span class="meta">chain: ${(e.chain || []).join(" → ") || "passthrough"}</span>
+             <span class="meta">${e.proc_ms} ms · RTF ${e.rtf}</span>`;
+  }
+  html += `</div>`;
+  if (e.status === "error") {
+    html += `<div class="err">✗ ${e.error}</div>`;
+  } else {
+    if (e.stt) {
+      const t = e.stt.text || "";
+      html += `<div class="stt ${t ? "" : "empty"}">${t || "(empty transcript)"}</div>
+        <div class="meta">lang: ${e.stt.language ?? "—"} · confidence: ${e.stt.confidence ?? "—"}</div>`;
+    } else if (e.stt_error) {
+      html += `<div class="err">STT failed: ${e.stt_error}</div>`;
+    }
+    if (e.scores) {
+      const s = e.scores, d = s.dnsmos || {};
+      const bits = [];
+      if (d.ovrl != null) bits.push(`<b>DNSMOS</b> sig ${d.sig} · bak ${d.bak} · ovrl <b>${d.ovrl}</b>`);
+      bits.push(s.noise_reduction_db != null
+        ? `<b>noise in gaps</b> ${s.noise_reduction_db >= 0 ? "−" : "+"}${Math.abs(s.noise_reduction_db)} dB`
+        : `gap-RMS n/a (no confident speech gaps)`);
+      if (s.wer) bits.push(`<b>WER</b> ${(s.wer.wer * 100).toFixed(1)}% (${s.wer.errors}/${s.wer.ref_words} words)`);
+      html += `<div class="meta" style="margin-top:6px">${bits.join(" &nbsp;|&nbsp; ")}</div>`;
+    } else if (e.scores_error) {
+      html += `<div class="err">scoring failed: ${e.scores_error}</div>`;
+    }
+    if (e.latency) {
+      html += `<div class="meta">latency: init ${e.latency.init_ms} ms · per-20ms-block p95 ${e.latency.block_ms_p95} ms · algo delay ${e.latency.algo_delay_ms} ms</div>`;
+    }
+    if (e.output) {
+      html += `<canvas class="wave" width="1600" height="128" id="wave-${e.id}"></canvas>
+        <audio controls preload="none" src="${fileUrl(e.output)}"></audio>
+        <div class="dl"><a href="${fileUrl(e.output)}" download="${runId}-${e.id}.wav">⬇ download ${e.output}</a></div>`;
+    }
+  }
+  card.innerHTML = html;
+  if (e.output) drawWave(fileUrl(e.output), "wave-" + e.id);
+}
+
+function renderInputCard(runId, meta) {
+  if (!meta.input || !meta.input.file) return;
+  const div = $("results");
+  const card = document.createElement("div");
+  card.className = "cand-card";
+  const url = `/api/runs/${runId}/files/${meta.input.file}`;
+  let inScores = "";
+  const is = meta.input_scores;
+  if (is && is.dnsmos) {
+    const parts = [`<b>DNSMOS</b> sig ${is.dnsmos.sig} · bak ${is.dnsmos.bak} · ovrl ${is.dnsmos.ovrl}`];
+    parts.push(is.gap_rms_db != null
+      ? `<b>noise floor</b> ${is.gap_rms_db} dBFS over ${is.gap_total_s}s of gaps`
+      : "no confident speech gaps found");
+    inScores = `<div class="meta" style="margin-top:6px">${parts.join(" &nbsp;|&nbsp; ")}</div>`;
+  }
+  card.innerHTML = `<div class="head"><span class="name">Input (raw subscriber)</span>
+      <span class="meta">${meta.input.duration_s}s · ${meta.input.sample_rate} Hz
+      ${meta.input.original_name ? " · " + meta.input.original_name : ""}</span></div>
+    ${inScores}
+    <canvas class="wave" width="1600" height="128" id="wave-input"></canvas>
+    <audio controls preload="none" src="${url}"></audio>
+    <div class="dl"><a href="${url}" download="${runId}-input.wav">⬇ download input.wav</a></div>`;
+  div.prepend(card);
+  drawWave(url, "wave-input");
+}
+
+async function drawWave(url, canvasId) {
+  try {
+    const buf = await (await fetch(url)).arrayBuffer();
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
+    const audio = await actx.decodeAudioData(buf);
+    const data = audio.getChannelData(0);
+    const cv = $(canvasId); if (!cv) return;
+    const ctx = cv.getContext("2d");
+    const W = cv.width, H = cv.height, step = Math.ceil(data.length / W);
+    ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#58a6ff";
+    for (let x = 0; x < W; x++) {
+      let min = 1, max = -1;
+      for (let i = x * step; i < (x + 1) * step && i < data.length; i++) {
+        if (data[i] < min) min = data[i];
+        if (data[i] > max) max = data[i];
+      }
+      const y1 = ((1 - max) / 2) * H, y2 = ((1 - min) / 2) * H;
+      ctx.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+    }
+    actx.close();
+  } catch { /* wave render is cosmetic */ }
+}
+
+async function loadRun(runId) {
+  const meta = await api("/api/runs/" + runId);
+  state.selectedRun = runId;
+  $("resRun").textContent = "— " + runId + " (" + meta.source + ", " + meta.status + ")";
+  $("results").innerHTML = "";
+  for (const e of meta.candidates || []) renderCandidateCard(runId, e);
+  renderInputCard(runId, meta);
+  document.querySelectorAll("tr.run").forEach((tr) =>
+    tr.classList.toggle("sel", tr.dataset.id === runId));
+}
+
+// ---------------------------------------------------------------- history
+async function loadHistory() {
+  const runs = await api("/api/runs");
+  const tb = $("histBody");
+  tb.innerHTML = "";
+  for (const r of runs) {
+    const tr = document.createElement("tr");
+    tr.className = "run"; tr.dataset.id = r.id;
+    const dur = r.input && r.input.duration_s != null ? r.input.duration_s + "s" : "—";
+    const cands = (r.candidates || []).map((c) => c.id).join(", ") || "—";
+    tr.innerHTML = `<td>${r.id}</td><td>${r.source}</td><td>${dur}</td>
+      <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis">${cands}</td><td>${r.status}</td>`;
+    tr.onclick = () => loadRun(r.id);
+    tb.appendChild(tr);
+  }
+}
+
+// ------------------------------------------------------------------ init
+document.querySelectorAll('input[name="source"]').forEach((r) => {
+  r.onchange = () => {
+    $("uploadField").style.display = r.value === "upload" && r.checked ? "" : "none";
+    $("srcHint").textContent = {
+      phone: "Phone: press Start first, then dial in — the first inbound call on this LiveKit project is picked up automatically. No number needed.",
+      web: "Web: Start joins a fresh room and publishes your mic with browser noise-suppression disabled (we want the noise).",
+      upload: "Upload: pick a file, press Start — it goes straight to processing. Live-only candidates (Krisp) are disabled here.",
+    }[r.value];
+    applyLiveOnly();
+  };
+});
+connectWS();
+loadCandidates();
+loadHistory();
+setPhase("idle");
+</script>
+</body>
+</html>
