@@ -21,6 +21,12 @@ LIVEKIT_URL = _get("LIVEKIT_URL")
 LIVEKIT_API_KEY = _get("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = _get("LIVEKIT_API_SECRET")
 
+# The agent name the recorder registers under. Default matches the project's SIP
+# dispatch rule so inbound calls land on us directly — which means the bench and
+# ai-handler must NOT run against the same project at once (LiveKit load-balances
+# jobs across workers sharing a name, so calls would land on whichever won).
+LK_AGENT_NAME = _get("LK_AGENT_NAME", "inbound-agent")
+
 WHISPER_URL = _get("WHISPER_URL")
 WHISPER_SAMPLE_RATE = int(_get("WHISPER_SAMPLE_RATE", "16000"))
 WHISPER_BOOST_VOLUME = _get("WHISPER_BOOST_VOLUME", "true").lower() == "true"

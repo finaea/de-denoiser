@@ -206,6 +206,33 @@ def main() -> None:
     assert w["wer"] == 0.75 and w["ref_words"] == 4, w  # sub, del, ins
     assert scoring.wer("", "anything") is None
 
+    # Gap windows must never land on speech. A real inbound call (2026-08-01)
+    # had silero score p=0.02 during -16 dBFS talking, so 1.4 s of speech was
+    # called a gap and every "noise cut" then measured speech destruction.
+    fs = config.PIPELINE_RATE
+    rng2 = np.random.default_rng(9)
+    quiet = (1e-4 * rng2.standard_normal(2 * fs)).astype(np.float32)
+    t = np.arange(3 * fs) / fs
+    loud = (0.4 * np.sin(2 * np.pi * 180 * t) * (1 + 0.5 * np.sin(2 * np.pi * 3 * t))).astype(
+        np.float32
+    )
+    probe = np.concatenate([quiet, loud, quiet])
+    loud_span = (2.0, 5.0)
+    for g0, g1 in scoring.gap_windows(probe):
+        assert g1 <= loud_span[0] or g0 >= loud_span[1], (
+            f"gap ({g0}, {g1}) overlaps the loud region {loud_span} — gap gating is inverted"
+        )
+    seg_db = scoring.gap_rms_db(probe, scoring.gap_windows(probe))
+    assert seg_db is not None and seg_db < -60, f"quiet gaps read {seg_db} dBFS"
+    # ...and it must abstain rather than guess when speech barely clears the
+    # noise, which is where a fixed threshold would start reporting nonsense
+    t2 = np.arange(8 * fs) / fs
+    gate = np.sin(2 * np.pi * 0.25 * t2) > 0
+    near = (0.3 * np.sin(2 * np.pi * 180 * t2) * gate
+            + 0.19 * rng2.standard_normal(len(t2))).astype(np.float32)  # ~4 dB apart
+    assert not scoring.gap_windows(near), "gaps claimed on audio with no usable separation"
+    print(f"gap gating OK: gaps avoid the loud region ({seg_db} dBFS), abstains at 4 dB SNR")
+
     # Measured band: the whole point is telling a phone call from a mic
     # recording when both arrive as 48 kHz wavs, so check both ends.
     rng = np.random.default_rng(5)

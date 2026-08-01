@@ -75,6 +75,7 @@ def _dnsmos(audio: np.ndarray) -> dict:
 
 _VAD_WINDOW = 512  # samples @16k, ~32 ms
 _GAP_PROB = 0.15  # window counts as a confident gap only under this
+_MIN_SEPARATION_DB = 6.0  # voiced-vs-floor gap below which nothing qualifies
 _MIN_GAP_S = 1.0
 _EDGE_TRIM_S = 0.2
 
@@ -104,18 +105,45 @@ def _speech_probs(audio: np.ndarray) -> np.ndarray:
 def gap_windows(audio: np.ndarray) -> list[tuple[float, float]]:
     """Confident no-speech windows (seconds) on 16 kHz mono float32 audio.
 
-    Conservative: prob < 0.15 sustained >= 1 s, 200 ms trimmed off each edge.
+    A window qualifies only if the VAD says no speech *and* it is quiet relative
+    to the recording, sustained >= 1 s, with 200 ms trimmed off each edge.
+
+    The energy gate is not redundant. Measured on a real inbound call
+    (2026-08-01): silero read p = 0.02 during speech at -16 dBFS, so 1.4 s of
+    loud talking was declared a gap and every candidate's "noise cut" then
+    scored how much *speech* it destroyed — the metric inverted. The VAD turns
+    out to be level-sensitive (the same waveform at 0.1x scored p = 0.94), and
+    telephony legs arrive hot. Energy alone would be fooled by loud background
+    noise; the VAD alone was fooled here; requiring both is what holds.
+
     Loud background *speech* keeps probabilities high, so heavy-babble audio
     yields few/no gaps — the metric abstains rather than lies (see README).
     """
     probs = _speech_probs(audio)
     win_s = _VAD_WINDOW / _FS
+    # Per-window energy, and a quiet bar set halfway (in dB) between this
+    # recording's own floor and its voiced level. A fixed margin can't work for
+    # both cases we care about: a clean line has 60 dB of separation, a caller in
+    # traffic may have 10 — and that noisy call is precisely the one whose gaps
+    # we want to measure. Below ~6 dB of separation there is nothing to
+    # distinguish, so no gap qualifies and the metric abstains.
+    n = len(probs)
+    frames = audio[: n * _VAD_WINDOW].reshape(n, _VAD_WINDOW)
+    rms = np.sqrt((frames.astype(np.float64) ** 2).mean(axis=1))
+    if not n:
+        return []
+    floor_db = 20 * np.log10(max(float(np.percentile(rms, 10)), 1e-9))
+    speech_db = 20 * np.log10(max(float(np.percentile(rms, 75)), 1e-9))
+    if speech_db - floor_db < _MIN_SEPARATION_DB:
+        return []
+    quiet_bar = 10 ** ((floor_db + (speech_db - floor_db) / 2) / 20)
     gaps: list[tuple[float, float]] = []
     start = None
+    quiet = np.append(rms < quiet_bar, False)
     for i, p in enumerate(list(probs) + [1.0]):  # sentinel closes a trailing gap
-        if p < _GAP_PROB and start is None:
+        if p < _GAP_PROB and quiet[i] and start is None:
             start = i
-        elif p >= _GAP_PROB and start is not None:
+        elif (p >= _GAP_PROB or not quiet[i]) and start is not None:
             g0, g1 = start * win_s + _EDGE_TRIM_S, i * win_s - _EDGE_TRIM_S
             if g1 - g0 >= _MIN_GAP_S - 2 * _EDGE_TRIM_S:
                 gaps.append((round(g0, 2), round(g1, 2)))

@@ -7,6 +7,7 @@ import asyncio
 import json
 import subprocess
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import numpy as np
@@ -18,11 +19,32 @@ from fastapi.responses import FileResponse, JSONResponse
 from . import config, lk_cloud, scoring, store, stt
 from .pipeline import run_chain
 from .processors import chain_available
-from .recorder import RECORD_RATE, Recorder
-
-app = FastAPI(title="NC Bench")
+from .recorder import (
+    RECORD_RATE,
+    Recorder,
+    ensure_worker,
+    shutdown_worker,
+    worker_alive,
+    worker_events,
+)
 
 lk_cloud.preload()  # cloud NC plugins must register on the main thread
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Register with LiveKit here — after the port is bound, and before anyone can
+    # press Start. After the bind, because a second copy of the bench that loses
+    # the port must not register a second worker under the same agent name:
+    # LiveKit would load-balance calls across both and the copy without an open
+    # session would drop them. Before Start, because a SIP dispatch that finds no
+    # worker means the room is never created and the call fails silently.
+    ensure_worker()
+    yield
+    await asyncio.to_thread(shutdown_worker)
+
+
+app = FastAPI(title="NC Bench", lifespan=_lifespan)
 
 # ------------------------------------------------------------------ ws hub
 
@@ -85,7 +107,17 @@ async def api_config():
         "livekit_url": config.LIVEKIT_URL,
         "whisper_url": config.WHISPER_URL,
         "hecttor_model_default": config.HECTTOR_MODEL,
+        "agent_name": config.LK_AGENT_NAME,
+        "worker_alive": worker_alive(),
     }
+
+
+@app.get("/api/worker")
+async def api_worker():
+    """Job-level trail. Tells 'the call never arrived' apart from 'it arrived and
+    we dropped it', which is invisible from the run alone."""
+    return {"agent_name": config.LK_AGENT_NAME, "alive": worker_alive(),
+            "events": worker_events()}
 
 
 # ---------------------------------------------------------------- session
@@ -150,12 +182,22 @@ async def session_stop():
     meta = store.load_meta(sess["run_id"])
     meta["input"] = input_meta
 
-    if input_meta["file"] is None:
+    if input_meta["file"] is None or input_meta.get("silent"):
+        detail = (
+            "no audio was recorded (no call arrived / no mic frames)"
+            if input_meta["file"] is None
+            else (
+                f"recorded {input_meta['duration_s']}s at {input_meta.get('level_dbfs')} dBFS "
+                f"from {(input_meta.get('diag') or {}).get('participant', 'the caller')} — the "
+                "leg was up but carried no audio. One-way audio: check that the PBX is "
+                "bridging the caller's media (and that the handset isn't muted)."
+            )
+        )
         meta["status"] = "empty"
+        meta["error"] = detail
         store.save_meta(sess["run_id"], meta)
         await broadcast({"type": "session", "state": "idle"})
-        return {"run_id": sess["run_id"], "status": "empty",
-                "detail": "no audio was recorded (no call arrived / no mic frames)"}
+        return {"run_id": sess["run_id"], "status": "empty", "detail": detail}
 
     meta["status"] = "processing"
     store.save_meta(sess["run_id"], meta)

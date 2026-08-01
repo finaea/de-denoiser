@@ -145,8 +145,39 @@
     "lk_model": "AIC:QUAIL_VF_L"
   },
   {
+    "id": "dpdfnet2-8k+hecttor-coda-vi",
+    "label": "C1 · DPDFNet-2 @8k → Hecttor coda-vi — band-split: suppress in-band, then isolate at 16k",
+    "chain": [
+      { "proc": "specnc", "model": "dpdfnet2-8k" },
+      { "proc": "hecttor", "model": "coda-vi-1.0" }
+    ]
+  },
+  {
+    "id": "dpdfnet2-8k+hush",
+    "label": "C5 · DPDFNet-2 @8k → Hush — the same band-split, fully open (no licence)",
+    "chain": [{ "proc": "specnc", "model": "dpdfnet2-8k" }, { "proc": "hush" }]
+  },
+  {
+    "id": "dpdfnet2+hush",
+    "label": "C5-control · DPDFNet-2 @16k → Hush — same pair, suppression NOT in-band (does the 8k split earn its 40 ms?)",
+    "chain": [{ "proc": "specnc", "model": "dpdfnet2" }, { "proc": "hush" }]
+  },
+  {
+    "id": "fastenhancer-t+hecttor-coda-vi",
+    "label": "C4 · FastEnhancer-T → Hecttor coda-vi — both 16k, no band-split (expected to lose; cheap to falsify)",
+    "chain": [
+      { "proc": "fastenhancer", "model": "fastenhancer-t" },
+      { "proc": "hecttor", "model": "coda-vi-1.0" }
+    ]
+  },
+  {
+    "id": "gtcrn+hush",
+    "label": "Free floor · GTCRN → Hush — cheapest open suppressor + open isolator, zero licence cost",
+    "chain": [{ "proc": "specnc", "model": "gtcrn" }, { "proc": "hush" }]
+  },
+  {
     "id": "dtln+hecttor-coda-vi",
-    "label": "DTLN → Hecttor coda-vi-1.0 (combo)",
+    "label": "DTLN → Hecttor coda-vi-1.0 (the original combo)",
     "chain": [{ "proc": "dtln" }, { "proc": "hecttor", "model": "coda-vi-1.0" }]
   }
 ]

@@ -10,9 +10,14 @@ dispatches it into the room to record.
 
 Web call:  create a fresh room, dispatch the recorder agent, hand the browser
            a publish token; the job records the browser's mic track.
-Phone call: poll the project for a room that gains a SIP participant (rooms
-            are per-call), dispatch the recorder agent into it. No phone
-            number needed — first inbound call wins.
+Phone call: with AGENT_NAME set to the name in the project's SIP dispatch rule
+            (`inbound-agent` by default, see config.LK_AGENT_NAME), LiveKit
+            dispatches the job into the call's room itself the moment the room
+            exists — so the session is *armed* before the call lands and the job
+            adopts whatever room it arrives in. Polling for a room that gained a
+            SIP participant remains as the fallback for a rule pointing at some
+            other agent. Either way the first inbound call wins, and a claim
+            flag stops a second job from double-recording.
 
 The job records the raw track at 48 kHz mono s16 (plus one extra AudioStream
 per ticked cloud live-rail candidate, e.g. Krisp BVC) and pushes ~20 ms
@@ -25,6 +30,7 @@ import asyncio
 import threading
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -36,7 +42,7 @@ from . import config, lk_cloud
 
 RECORD_RATE = 48_000
 _LEVEL_WINDOW = int(RECORD_RATE * 0.02)  # 20 ms
-AGENT_NAME = "nc-bench-recorder"
+AGENT_NAME = config.LK_AGENT_NAME
 
 EventCb = Callable[[dict], Awaitable[None]]
 
@@ -81,7 +87,12 @@ class _Bridge:
         self.emit: EventCb | None = None
 
     def reset(self):
-        self.active = False
+        # armed: a session is open, so an incoming job belongs to us
+        # claimed: a job is already recording — later jobs must not double-record
+        self.armed = False
+        self.adopt_any = False
+        self.claimed = False
+        self.claim_lock = threading.Lock()
         self.target_room: str | None = None
         self.target_identity: str | None = None  # None = first SIP/non-agent
         self.live: list[dict] = []
@@ -90,6 +101,7 @@ class _Bridge:
         self.raw: list[np.ndarray] = []
         self.live_bufs: dict[str, list[np.ndarray]] = {}
         self.live_errors: dict[str, str] = {}
+        self.diag: dict = {}  # room / participant / SIP attributes of what we recorded
 
     def emit_threadsafe(self, ev: dict) -> None:
         if self.emit is not None and self.main_loop is not None:
@@ -101,14 +113,46 @@ _bridge = _Bridge()
 # ------------------------------------------------------------ agent worker
 
 _server_started = False
+_server_thread: threading.Thread | None = None
+_server_obj = None
+_server_loop: asyncio.AbstractEventLoop | None = None
 _server_lock = threading.Lock()
+# last few worker-level events (job offered / accepted / rejected), so a phone
+# call that never records can be told apart from one that never arrived
+_worker_events: deque = deque(maxlen=30)
+
+
+def _note(event: str, **kw) -> None:
+    _worker_events.append({"t": time.strftime("%H:%M:%S"), "event": event, **kw})
 
 
 async def _entrypoint(ctx) -> None:
     await ctx.connect()
     b = _bridge
-    if not b.active or ctx.room.name != b.target_room:
-        return  # stale/foreign dispatch
+    room = ctx.room.name
+    if not b.armed:
+        _note("job dropped", room=room, why="no session open — press Start before dialing")
+        return
+    with b.claim_lock:
+        if b.claimed:
+            _note("job dropped", room=room, why="another job already recording")
+            return
+        if b.target_room is None:
+            # phone mode: the SIP dispatch rule sent us straight into the
+            # call's room, so adopt it — nothing else knows the name yet
+            if not b.adopt_any:
+                _note("job dropped", room=room, why="session is not expecting a phone call")
+                return
+            b.target_room = room
+            b.emit_threadsafe(
+                {"type": "session", "state": "call_found",
+                 "room": room, "participant": "(dispatched by SIP rule)"}
+            )
+        elif room != b.target_room:
+            _note("job dropped", room=room, why=f"foreign room (expecting {b.target_room})")
+            return
+        b.claimed = True
+    _note("job recording", room=room)
 
     loop = asyncio.get_running_loop()
     track_fut: asyncio.Future[tuple[rtc.Track, str]] = loop.create_future()
@@ -143,6 +187,41 @@ async def _entrypoint(ctx) -> None:
 
     b.emit_threadsafe({"type": "session", "state": "recording", "room": ctx.room.name,
                        "participant": ident})
+    speaker = next(
+        (p for p in ctx.room.remote_participants.values() if p.identity == ident), None
+    )
+    b.diag = {
+        "room": ctx.room.name,
+        "participant": ident,
+        "participant_kind": str(getattr(speaker, "kind", "")),
+        # SIP participants carry sip.callStatus / sip.callID / numbers here —
+        # the difference between "the call was up and quiet" and "it never
+        # actually answered" is only visible in these
+        "attributes": dict(getattr(speaker, "attributes", {}) or {}),
+    }
+
+    async def publish_silence():
+        """Send silence toward the caller for the whole recording.
+
+        A recorder has nothing to say, but a SIP leg that receives no RTP at all
+        may never send any either: PBXs behind NAT latch onto the first inbound
+        stream. Without this the call connects and the recording comes back
+        bit-exactly zero — which is what happened before this existed. A live
+        agent hides the problem by greeting the caller immediately.
+        """
+        source = rtc.AudioSource(RECORD_RATE, 1)
+        track = rtc.LocalAudioTrack.create_audio_track("nc-bench-silence", source)
+        await ctx.room.local_participant.publish_track(
+            track, rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
+        )
+        frame = np.zeros(RECORD_RATE // 50, dtype=np.int16)  # 20 ms
+        try:
+            while True:
+                await source.capture_frame(
+                    rtc.AudioFrame(frame.tobytes(), RECORD_RATE, 1, len(frame))
+                )
+        except asyncio.CancelledError:
+            pass
 
     async def consume_raw():
         t0 = time.monotonic()
@@ -188,7 +267,7 @@ async def _entrypoint(ctx) -> None:
         finally:
             await stream.aclose()
 
-    tasks = [asyncio.create_task(consume_raw())]
+    tasks = [asyncio.create_task(consume_raw()), asyncio.create_task(publish_silence())]
     tasks += [asyncio.create_task(consume_live(c)) for c in b.live]
 
     try:
@@ -201,10 +280,57 @@ async def _entrypoint(ctx) -> None:
         b.finished.set()
 
 
-def _ensure_agent_server() -> None:
+async def _on_request(req) -> None:
+    """Accept every job offered to us, and record that it was offered.
+
+    Without this trail a failed phone call is indistinguishable from a call that
+    never arrived: the job log is the only place that difference shows up.
+    """
+    job = getattr(req, "job", None)
+    room = getattr(getattr(job, "room", None), "name", "?")
+    _note("job offered", room=room, armed=_bridge.armed)
+    await req.accept()
+
+
+def worker_alive() -> bool:
+    return _server_thread is not None and _server_thread.is_alive()
+
+
+def worker_events() -> list[dict]:
+    return list(_worker_events)
+
+
+def shutdown_worker(timeout: float = 5.0) -> None:
+    """Unregister on the way out.
+
+    A killed process leaves its registration behind until LiveKit's own timeout,
+    and LiveKit load-balances across everything registered under an agent name —
+    so the first call after a restart can be handed to the corpse and simply
+    fail. Closing cleanly makes a restart safe immediately.
+    """
     global _server_started
+    if _server_obj is None or _server_loop is None or not worker_alive():
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(_server_obj.aclose(), _server_loop).result(timeout)
+    except Exception:
+        pass
+    _server_started = False
+
+
+def ensure_worker() -> None:
+    """Register the agents worker, reviving it if its thread has died.
+
+    Called at server startup rather than on Start: registration takes a moment,
+    and a SIP dispatch that finds no worker means LiveKit never creates the room
+    — the call just fails, leaving no trace on this side at all. The liveness
+    check matters for the same reason: if the worker loop dies (dropped signal
+    connection, an unhandled error) a "started" flag alone would keep claiming
+    all is well while every inbound call quietly failed.
+    """
+    global _server_started, _server_thread, _server_obj
     with _server_lock:
-        if _server_started:
+        if _server_started and worker_alive():
             return
         from livekit.agents.job import JobExecutorType
         from livekit.agents.worker import AgentServer
@@ -215,13 +341,26 @@ def _ensure_agent_server() -> None:
             api_secret=config.LIVEKIT_API_SECRET,
             job_executor_type=JobExecutorType.THREAD,
         )
-        server.rtc_session(_entrypoint, agent_name=AGENT_NAME)
+        server.rtc_session(_entrypoint, agent_name=AGENT_NAME, on_request=_on_request)
+        _server_obj = server
+
+        def _run() -> None:
+            global _server_loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            _server_loop = loop
+            try:
+                loop.run_until_complete(server.run(devmode=True))
+            finally:
+                loop.close()
+
         # run() is a coroutine — give the worker its own loop in its own thread
-        threading.Thread(
-            target=lambda: asyncio.run(server.run(devmode=True)),
+        _server_thread = threading.Thread(
+            target=_run,
             daemon=True,
             name="nc-agent-server",
-        ).start()
+        )
+        _server_thread.start()
         _server_started = True
 
 
@@ -266,12 +405,12 @@ class Recorder:
     # ---------------------------------------------------------------- web
 
     async def start_web(self) -> dict:
-        _ensure_agent_server()
+        ensure_worker()
         self.room_name = f"nc-bench-{uuid.uuid4().hex[:8]}"
         identity = "nc-web-user"
         _bridge.target_room = self.room_name
         _bridge.target_identity = identity
-        _bridge.active = True
+        _bridge.armed = True
         lk = self._api()
         await lk.room.create_room(api.CreateRoomRequest(name=self.room_name))
         await _dispatch(lk, self.room_name)
@@ -284,13 +423,21 @@ class Recorder:
     # -------------------------------------------------------------- phone
 
     async def start_phone(self) -> None:
-        _ensure_agent_server()
+        # Armed *before* the call arrives, because with AGENT_NAME matching the
+        # project's SIP dispatch rule the job lands on us the moment the room is
+        # created — earlier than any polling could notice it. The poller below
+        # stays as the fallback for when the rule points at a different agent.
+        _bridge.armed = True
+        _bridge.adopt_any = True
+        ensure_worker()
         lk = self._api()
         baseline = {r.name for r in (await lk.room.list_rooms(api.ListRoomsRequest())).rooms}
         await self._emit({"type": "session", "state": "waiting_call"})
 
         async def poll():
             while True:
+                if _bridge.target_room is not None:
+                    return  # a dispatched job already claimed the call
                 rooms = (await lk.room.list_rooms(api.ListRoomsRequest())).rooms
                 for r in rooms:
                     if r.name in baseline or r.num_participants == 0:
@@ -305,7 +452,6 @@ class Recorder:
                         self.room_name = r.name
                         _bridge.target_room = r.name
                         _bridge.target_identity = sip.identity
-                        _bridge.active = True
                         await self._emit({
                             "type": "session", "state": "call_found",
                             "room": r.name, "participant": sip.identity,
@@ -332,9 +478,10 @@ class Recorder:
                 pass
 
         _bridge.stop_flag.set()
-        if _bridge.active:
+        if _bridge.claimed:
             # the job sets finished after draining its streams
             await asyncio.to_thread(_bridge.finished.wait, 10.0)
+        _bridge.armed = False
         if self._lk is not None:
             try:
                 await self._lk.aclose()
@@ -367,11 +514,21 @@ class Recorder:
                 live[cid] = {"error": "no frames captured on the live NC stream"}
 
         if not _bridge.raw:
-            return {"file": None, "duration_s": 0.0, "sample_rate": RECORD_RATE}, live
+            return {"file": None, "duration_s": 0.0, "sample_rate": RECORD_RATE,
+                    "diag": _bridge.diag}, live
         audio = np.concatenate(_bridge.raw)
         sf.write(out_wav, audio, RECORD_RATE)
+        # A leg that was up but carried no audio: bit-exact zeros when no media
+        # arrived at all (-180 dBFS), ~-107 dBFS when the stream is there but
+        # empty. Real speech is above -50; -80 separates them with room to spare,
+        # and scoring silence would waste the whole run.
+        level_db = 20 * np.log10(max(float(np.sqrt((audio.astype(np.float64) ** 2).mean())),
+                                     1e-9) / 32768)
         return {
             "file": out_wav.name,
+            "diag": _bridge.diag,
+            "level_dbfs": round(level_db, 1),
+            "silent": bool(len(audio) and level_db < -80),
             "duration_s": round(len(audio) / RECORD_RATE, 2),
             "sample_rate": RECORD_RATE,
         }, live

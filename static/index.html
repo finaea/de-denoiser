@@ -116,6 +116,7 @@
       Upload audio file</label>
     <div class="hint" id="srcHint">Phone: press Start first, then dial in — the first
       inbound call on this LiveKit project is picked up automatically. No number needed.</div>
+    <div class="hint" id="agentHint" style="color:#6e7681"></div>
     <div class="field" id="uploadField" style="display:none">
       <label>Audio file (wav/mp3/m4a/ogg/flac — anything ffmpeg reads)</label>
       <input type="file" id="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aac,.opus,.webm" />
@@ -624,6 +625,15 @@ document.querySelectorAll('input[name="source"]').forEach((r) => {
   };
 });
 connectWS();
+// the recorder only receives phone calls if this name matches the project's SIP
+// dispatch rule — surfaced so a mismatch is visible instead of silent
+api("/api/config").then((c) => {
+  const el = $("agentHint");
+  el.textContent = c.worker_alive
+    ? `registered as agent "${c.agent_name}" — must match your SIP dispatch rule`
+    : `⚠ agent worker is NOT running — inbound calls will fail before a room is even created`;
+  if (!c.worker_alive) el.style.color = "#e06c75";
+}).catch(() => {});
 loadCandidates();
 loadHistory();
 setPhase("idle");

@@ -23,10 +23,14 @@ model/weight/rate/chunk, DTLN model dir, port.
 ## Using it
 
 1. Pick a **source**:
-   - **Phone call** — press Start *first*, then dial the trunk pointed at the
-     configured LiveKit project. The poller picks up the first room that gains
-     a SIP participant (rooms existing before Start are ignored) and records
-     the caller's track. No phone number entry.
+   - **Phone call** — press Start *first*, **then** dial the trunk pointed at the
+     configured LiveKit project. No phone number entry; the first inbound call
+     wins. Start has to come first for two independent reasons: LiveKit
+     dispatches the job the instant the call's room exists (a job arriving with
+     no session open is rejected), and the fallback poller ignores any room that
+     already existed at Start, so it can't grab a stale one.
+     See *Phone mode & the agent name* below — it needs one `.env` value to match
+     your SIP dispatch rule.
    - **Web call** — Start joins a fresh room and publishes your mic with
      browser echo-cancellation / noise-suppression / AGC **disabled** (we want
      the noise to survive so the NC has something to do).
@@ -106,6 +110,64 @@ Deliberately not wired yet: **LL-SDR** (no released checkpoint — training repo
 only) and **faster-enhancer-py** (an int8 48 kHz C port of FastEnhancer; needs
 `faster-enhancer.c` built locally, and only worth it if the float ONNX wins).
 Combinations are next.
+
+## Combination candidates
+
+Chains run their stages in order, and the pipeline resamples between them — so
+an 8 kHz stage feeding a 16 kHz stage is just two rows of JSON, no code. That is
+the one combination shape with a structural argument behind it: **suppress in the
+call's own band, then isolate at 16 kHz**, so each model sees input near its
+training distribution. Everything else here exists to be falsified — stacking two
+ML denoisers is artifact-on-artifact, and the point is to measure how badly.
+
+| Candidate | Question |
+|---|---|
+| `dpdfnet2-8k+hecttor-coda-vi` | **C1** — the band-split: does in-band cleanup before isolation beat isolation alone? |
+| `dpdfnet2-8k+hush` | **C5** — the same idea with zero licence cost |
+| `dpdfnet2+hush` | **C5 control** — same pair, suppression at 16 kHz instead of 8 kHz. If it ties C5, the band-split isn't earning its 40 ms |
+| `fastenhancer-t+hecttor-coda-vi` | **C4** — 16 kHz stacking with the cheapest suppressor (0.7 ms). Expected to lose; cheap to falsify |
+| `gtcrn+hush` | the free floor: cheapest open suppressor + the open isolator |
+| `dtln+hecttor-coda-vi` | the original combo, kept as a reference point |
+
+Isolation-before-suppression is deliberately absent: the isolator is the fragile
+model, and feeding it raw audio is the whole point of C1. Latency **adds** —
+`algo_delay_ms` for C1 is 60 ms (40 + 20), which is a live-viability fact, not a
+detail. Cloud candidates can't appear in chains at all: they process inside the
+rtc stack on the live rail, not in this pipeline.
+
+**First measurement, on a clean 11.8 kHz mic recording** (2026-08-01): every combo
+landed at or below its own best single stage — `dpdfnet2+hush` worst overall at
+2.80 OVRL vs 3.11 and 3.00 alone, `gtcrn+hush` 3.06 vs 3.20, `fastenhancer-t
++hecttor` 3.13 vs 3.21, `dpdfnet2-8k+hecttor` 3.18 ≈ the best single. So the
+artifact-on-artifact rule showed up in the numbers, and the more aggressive the
+pair the worse it got. Weak test though — nothing in that recording needed
+removing. One mild signal worth chasing: the in-band variant beat its own control
+(`dpdfnet2-8k+hush` 2.94 vs `dpdfnet2+hush` 2.80), which is the C1 hypothesis
+pointing the right way on one clip.
+
+## Phone mode & the agent name
+
+A LiveKit SIP dispatch rule names the agent it hands each inbound call to, and
+the room is created with that dispatch attached — so if nothing is registered
+under that name, **the call gets no agent and drops**. The recorder therefore
+registers under `LK_AGENT_NAME` (`.env`, default **`inbound-agent`**), matching
+the usual rule, and lets LiveKit dispatch it directly. Verified 2026-08-01 by
+simulating exactly what the rule does — create a `call-…` room, dispatch
+`inbound-agent`, join as a `sip_…` participant — and the session recorded 5.5 s
+with the live Krisp candidate attached.
+
+Consequences worth knowing:
+
+- **Never run ai-handler and the bench against the same LiveKit project at once.**
+  LiveKit load-balances jobs across every worker sharing an agent name, so a real
+  call could land on the bench — which only listens, so the caller gets silence.
+  If you need both, give the bench its own name here *and* its own dispatch rule.
+- The session is armed the moment you press Start, before any call exists, and a
+  claim flag makes the first job the only recorder — so the fallback poller can't
+  cause a second, duplicate job.
+- `dispatch_rule_individual` with a room prefix (one fresh room per call) is the
+  friendly case. A rule with a fixed room name would leave the room lingering
+  between calls, which the poller path deliberately skips as stale.
 
 ## Cloud candidates (Krisp & ai-coustics via LiveKit)
 
