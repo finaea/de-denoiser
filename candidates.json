@@ -15,6 +15,11 @@
     "chain": [{ "proc": "hecttor", "model": "coda-vi-1.0", "enhancer_weight": 0.75 }]
   },
   {
+    "id": "hecttor-coda-vi-8k",
+    "label": "Hecttor coda-vi-1.0 @ native 8 kHz (the band the call arrives in)",
+    "chain": [{ "proc": "hecttor", "model": "coda-vi-1.0", "sample_rate": 8000 }]
+  },
+  {
     "id": "hecttor-coda",
     "label": "Hecttor coda-1.0 (suppression only)",
     "chain": [{ "proc": "hecttor", "model": "coda-1.0" }]
