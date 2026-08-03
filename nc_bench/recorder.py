@@ -8,16 +8,20 @@ job (verified with scripts/agents_nc_probe.py — a plain rtc participant gets
 executor (same process — buffers are shared directly) and explicitly
 dispatches it into the room to record.
 
-Web call:  create a fresh room, dispatch the recorder agent, hand the browser
-           a publish token; the job records the browser's mic track.
-Phone call: with AGENT_NAME set to the name in the project's SIP dispatch rule
-            (`inbound-agent` by default, see config.LK_AGENT_NAME), LiveKit
-            dispatches the job into the call's room itself the moment the room
-            exists — so the session is *armed* before the call lands and the job
-            adopts whatever room it arrives in. Polling for a room that gained a
-            SIP participant remains as the fallback for a rule pointing at some
-            other agent. Either way the first inbound call wins, and a claim
-            flag stops a second job from double-recording.
+Both sources create the room here and dispatch the recorder into it explicitly,
+so the job always knows which room and which participant it is waiting for.
+
+Web call:   hand the browser a publish token; the job records its mic track.
+Phone call: **outbound** — place a SIP participant on LK_SIP_TRUNK_ID dialling
+            LK_SIP_CALL_TO into our own room; you pick up and talk. The recorder
+            is dispatched *before* the dial so it is already subscribed when the
+            call is answered, otherwise the first seconds are lost. Hanging up
+            ends the recording exactly like pressing Stop (the job watches for
+            the SIP participant leaving and trips the same stop flag).
+
+Outbound rather than inbound because inbound needed AGENT_NAME to match the
+project's SIP dispatch rule, which meant the bench and ai-handler fought over
+every real call to the same project.
 
 The job records the raw track at 48 kHz mono s16 (plus one extra AudioStream
 per ticked cloud live-rail candidate, e.g. Krisp BVC) and pushes ~20 ms
@@ -36,6 +40,7 @@ from typing import Awaitable, Callable
 
 import numpy as np
 import soundfile as sf
+from google.protobuf import duration_pb2
 from livekit import api, rtc
 
 from . import config, lk_cloud
@@ -62,19 +67,6 @@ def _browser_token(identity: str, room: str) -> str:
     )
 
 
-def _is_sip(p) -> bool:
-    kind = getattr(p, "kind", None)
-    if kind is not None:
-        try:
-            from livekit.protocol.models import ParticipantInfo
-
-            if kind == ParticipantInfo.Kind.SIP:
-                return True
-        except Exception:
-            pass
-    return str(getattr(p, "identity", "")).startswith("sip_")
-
-
 # ------------------------------------------------------------------ bridge
 # Shared state between the FastAPI loop and the agents job thread. One
 # session at a time (enforced by the server), so a module singleton is fine.
@@ -90,11 +82,10 @@ class _Bridge:
         # armed: a session is open, so an incoming job belongs to us
         # claimed: a job is already recording — later jobs must not double-record
         self.armed = False
-        self.adopt_any = False
         self.claimed = False
         self.claim_lock = threading.Lock()
         self.target_room: str | None = None
-        self.target_identity: str | None = None  # None = first SIP/non-agent
+        self.target_identity: str | None = None
         self.live: list[dict] = []
         self.stop_flag = threading.Event()
         self.finished = threading.Event()
@@ -137,18 +128,7 @@ async def _entrypoint(ctx) -> None:
         if b.claimed:
             _note("job dropped", room=room, why="another job already recording")
             return
-        if b.target_room is None:
-            # phone mode: the SIP dispatch rule sent us straight into the
-            # call's room, so adopt it — nothing else knows the name yet
-            if not b.adopt_any:
-                _note("job dropped", room=room, why="session is not expecting a phone call")
-                return
-            b.target_room = room
-            b.emit_threadsafe(
-                {"type": "session", "state": "call_found",
-                 "room": room, "participant": "(dispatched by SIP rule)"}
-            )
-        elif room != b.target_room:
+        if room != b.target_room:
             _note("job dropped", room=room, why=f"foreign room (expecting {b.target_room})")
             return
         b.claimed = True
@@ -160,17 +140,22 @@ async def _entrypoint(ctx) -> None:
     def consider(track: rtc.Track, participant) -> None:
         if track_fut.done() or track.kind != rtc.TrackKind.KIND_AUDIO:
             return
-        ident = participant.identity
-        if b.target_identity is not None:
-            if ident != b.target_identity:
-                return
-        elif not _is_sip(participant):
+        if participant.identity != b.target_identity:
             return
-        track_fut.set_result((track, ident))
+        track_fut.set_result((track, participant.identity))
 
     @ctx.room.on("track_subscribed")
     def on_track(track, pub, participant):
         consider(track, participant)
+
+    @ctx.room.on("participant_disconnected")
+    def on_left(participant):
+        # The callee hung up. Stop exactly as if Stop had been pressed, so the
+        # buffers are drained and the UI's stop call finalizes the run normally.
+        if participant.identity == b.target_identity:
+            _note("hung up", room=room, participant=participant.identity)
+            b.emit_threadsafe({"type": "session", "state": "call_ended"})
+            b.stop_flag.set()
 
     for participant in ctx.room.remote_participants.values():
         for pub in participant.track_publications.values():
@@ -422,45 +407,58 @@ class Recorder:
 
     # -------------------------------------------------------------- phone
 
-    async def start_phone(self) -> None:
-        # Armed *before* the call arrives, because with AGENT_NAME matching the
-        # project's SIP dispatch rule the job lands on us the moment the room is
-        # created — earlier than any polling could notice it. The poller below
-        # stays as the fallback for when the rule points at a different agent.
-        _bridge.armed = True
-        _bridge.adopt_any = True
+    async def start_phone(self) -> dict:
+        """Dial out and record whoever answers."""
+        missing = [
+            n for n, v in (("LK_SIP_TRUNK_ID", config.LK_SIP_TRUNK_ID),
+                           ("LK_SIP_CALL_TO", config.LK_SIP_CALL_TO)) if not v
+        ]
+        if missing:
+            raise RuntimeError(f"outbound phone mode needs {' and '.join(missing)} in .env")
+
         ensure_worker()
+        self.room_name = f"nc-bench-{uuid.uuid4().hex[:8]}"
+        identity = "sip_callee"
+        _bridge.target_room = self.room_name
+        _bridge.target_identity = identity
+        _bridge.armed = True
         lk = self._api()
-        baseline = {r.name for r in (await lk.room.list_rooms(api.ListRoomsRequest())).rooms}
-        await self._emit({"type": "session", "state": "waiting_call"})
+        await lk.room.create_room(api.CreateRoomRequest(name=self.room_name))
+        # Recorder in before the phone rings: a job that arrives after the answer
+        # misses the opening seconds, which is where a scripted read starts.
+        await _dispatch(lk, self.room_name)
+        await self._emit({"type": "session", "state": "dialing",
+                          "room": self.room_name, "number": config.LK_SIP_CALL_TO})
 
-        async def poll():
-            while True:
-                if _bridge.target_room is not None:
-                    return  # a dispatched job already claimed the call
-                rooms = (await lk.room.list_rooms(api.ListRoomsRequest())).rooms
-                for r in rooms:
-                    if r.name in baseline or r.num_participants == 0:
-                        continue
-                    parts = (
-                        await lk.room.list_participants(
-                            api.ListParticipantsRequest(room=r.name)
-                        )
-                    ).participants
-                    sip = next((p for p in parts if _is_sip(p)), None)
-                    if sip is not None:
-                        self.room_name = r.name
-                        _bridge.target_room = r.name
-                        _bridge.target_identity = sip.identity
-                        await self._emit({
-                            "type": "session", "state": "call_found",
-                            "room": r.name, "participant": sip.identity,
-                        })
-                        await _dispatch(lk, r.name)
-                        return
-                await asyncio.sleep(1.0)
+        async def dial():
+            try:
+                await lk.sip.create_sip_participant(
+                    api.CreateSIPParticipantRequest(
+                        sip_trunk_id=config.LK_SIP_TRUNK_ID,
+                        sip_call_to=config.LK_SIP_CALL_TO,
+                        room_name=self.room_name,
+                        participant_identity=identity,
+                        participant_name="nc-bench-callee",
+                        # Block until answered so busy / declined / no-answer raises
+                        # here instead of silently yielding an empty recording.
+                        wait_until_answered=True,
+                        ringing_timeout=duration_pb2.Duration(
+                            seconds=config.LK_SIP_RINGING_TIMEOUT_S
+                        ),
+                        # NEVER enable: the trunk-side Krisp filter would clean the
+                        # audio this whole bench exists to measure.
+                        krisp_enabled=False,
+                    )
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                await self._emit({"type": "session", "state": "call_failed", "error": str(e)})
 
-        self._poll_task = asyncio.create_task(poll())
+        # Backgrounded: wait_until_answered holds the request open for the whole
+        # ring, and the UI needs to come back and show "dialing" immediately.
+        self._poll_task = asyncio.create_task(dial())
+        return {"room": self.room_name, "number": config.LK_SIP_CALL_TO}
 
     # ---------------------------------------------------------------- stop
 
@@ -483,6 +481,16 @@ class Recorder:
             await asyncio.to_thread(_bridge.finished.wait, 10.0)
         _bridge.armed = False
         if self._lk is not None:
+            # Deleting the room hangs up the SIP leg — pressing Stop has to end
+            # the phone call, not leave it up with nobody recording it. Harmless
+            # when the callee already hung up, and it releases the web room too.
+            if self.room_name:
+                try:
+                    await self._lk.room.delete_room(
+                        api.DeleteRoomRequest(room=self.room_name)
+                    )
+                except Exception:
+                    pass
             try:
                 await self._lk.aclose()
             except Exception:

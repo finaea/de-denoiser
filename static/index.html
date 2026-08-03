@@ -111,13 +111,14 @@
   <div class="box">
     <h2>Source</h2>
     <label class="radio"><input type="radio" name="source" value="phone" checked />
-      Phone call (inbound agent)</label>
+      Phone call (outbound — we ring you)</label>
     <label class="radio"><input type="radio" name="source" value="web" />
       Web call (browser mic)</label>
     <label class="radio"><input type="radio" name="source" value="upload" />
       Upload audio file</label>
-    <div class="hint" id="srcHint">Phone: press Start first, then dial in — the first
-      inbound call on this LiveKit project is picked up automatically. No number needed.</div>
+    <div class="hint" id="srcHint">Phone: press Start and your phone rings
+      (<code>LK_SIP_CALL_TO</code> over <code>LK_SIP_TRUNK_ID</code>). Pick up and talk.
+      Hanging up ends the run exactly like pressing Stop.</div>
     <div class="hint" id="agentHint" style="color:#6e7681"></div>
     <div class="field" id="uploadField" style="display:none">
       <label>Audio file (wav/mp3/m4a/ogg/flac — anything ffmpeg reads)</label>
@@ -305,10 +306,15 @@ function handleEvent(ev) {
     return;
   }
   if (ev.type === "session") {
-    if (ev.state === "waiting_call") { setPhase("armed", "waiting for call…"); setStatus("dial in now"); }
-    if (ev.state === "call_found") { $("pillRoom").textContent = "room: " + ev.room; setStatus("call picked up: " + ev.participant); }
+    if (ev.state === "dialing") {
+      $("pillRoom").textContent = "room: " + ev.room;
+      setPhase("armed", "ringing " + ev.number + "…"); setStatus("pick up the call");
+    }
+    if (ev.state === "call_failed") { callFailure = ev.error; stopSession(); }
     if (ev.state === "web_ready") { $("pillRoom").textContent = "room: " + ev.room; }
     if (ev.state === "recording") { setPhase("recording"); recT0 = Date.now(); setStatus("recording subscriber"); }
+    // hung up = pressed Stop: finalize through the same path so NC still runs
+    if (ev.state === "call_ended") { setStatus("caller hung up — processing"); stopSession(); }
     if (ev.state === "idle") { setPhase("idle"); recT0 = null; }
     return;
   }
@@ -336,6 +342,7 @@ $("btnStart").onclick = async () => {
   if (!cands.length) { setStatus("tick at least one candidate", true); return; }
   setStatus("");
   state.levels = [];
+  callFailure = null;
   try {
     if (source === "upload") {
       const f = $("file").files[0];
@@ -359,7 +366,7 @@ $("btnStart").onclick = async () => {
       setPhase("armed", "joining room…");
       await joinWebRoom(res);
     } else {
-      setPhase("armed", "waiting for call…");
+      setPhase("armed", "dialing…");
     }
   } catch (e) {
     setPhase("idle");
@@ -367,13 +374,24 @@ $("btnStart").onclick = async () => {
   }
 };
 
-$("btnStop").onclick = async () => {
+// Named because a hang-up finalizes through here too — one stop path, so a call
+// that ends by itself still runs NC. Guarded: hanging up *and* pressing Stop
+// would otherwise fire two stops and the second 409s.
+let stopping = false;
+// Why the call never produced audio is only known here — the stop endpoint just
+// sees an empty recording, so its generic "no call arrived" would bury the real
+// SIP error (busy, declined, no answer).
+let callFailure = null;
+async function stopSession() {
+  if (stopping || !(state.phase === "armed" || state.phase === "recording")) return;
+  stopping = true;
   setPhase("processing");
   try {
     if (state.lkRoom) { await state.lkRoom.disconnect(); state.lkRoom = null; }
     const res = await api("/api/session/stop", { method: "POST" });
     if (res.status === "empty") {
-      setPhase("idle"); setStatus(res.detail, true); loadHistory();
+      setPhase("idle"); loadHistory();
+      setStatus(callFailure ? "call failed: " + callFailure : res.detail, true);
       return;
     }
     $("resRun").textContent = "— " + res.run_id;
@@ -381,8 +399,11 @@ $("btnStop").onclick = async () => {
     setStatus("processing " + res.run_id + "…");
   } catch (e) {
     setPhase("idle"); setStatus(e.message, true);
+  } finally {
+    stopping = false;
   }
-};
+}
+$("btnStop").onclick = stopSession;
 
 // ------------------------------------------------------------ web (mic)
 function loadLK() {
@@ -636,7 +657,7 @@ document.querySelectorAll('input[name="source"]').forEach((r) => {
   r.onchange = () => {
     $("uploadField").style.display = r.value === "upload" && r.checked ? "" : "none";
     $("srcHint").textContent = {
-      phone: "Phone: press Start first, then dial in — the first inbound call on this LiveKit project is picked up automatically. No number needed.",
+      phone: "Phone: Start places an outbound SIP call to LK_SIP_CALL_TO over LK_SIP_TRUNK_ID and records whoever answers. Hang up or press Stop to finish.",
       web: "Web: Start joins a fresh room and publishes your mic with browser noise-suppression disabled (we want the noise).",
       upload: "Upload: pick a file, press Start — it goes straight to processing. Live-only candidates (Krisp) are disabled here.",
     }[r.value];
@@ -649,8 +670,8 @@ connectWS();
 api("/api/config").then((c) => {
   const el = $("agentHint");
   el.textContent = c.worker_alive
-    ? `registered as agent "${c.agent_name}" — must match your SIP dispatch rule`
-    : `⚠ agent worker is NOT running — inbound calls will fail before a room is even created`;
+    ? `recorder registered as agent "${c.agent_name}"`
+    : `⚠ agent worker is NOT running — nothing will be recorded`;
   if (!c.worker_alive) el.style.color = "#e06c75";
 }).catch(() => {});
 loadCandidates();

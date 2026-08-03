@@ -2,7 +2,7 @@
 
 A dev web UI (styled after ai-handler's `/debug` UI) for A/B-testing
 noise-cancellation candidates on real audio: record a **phone call**
-(inbound, no number needed), a **web call** (browser mic), or **upload a
+(outbound — it rings you), a **web call** (browser mic), or **upload a
 file** — then run the recording through every ticked NC candidate (singles
 or chains) and compare **STT transcripts**, **waveforms**, and **playable /
 downloadable output audio** side by side. Every run is stored and
@@ -23,14 +23,10 @@ model/weight/rate/chunk, DTLN model dir, port.
 ## Using it
 
 1. Pick a **source**:
-   - **Phone call** — press Start *first*, **then** dial the trunk pointed at the
-     configured LiveKit project. No phone number entry; the first inbound call
-     wins. Start has to come first for two independent reasons: LiveKit
-     dispatches the job the instant the call's room exists (a job arriving with
-     no session open is rejected), and the fallback poller ignores any room that
-     already existed at Start, so it can't grab a stale one.
-     See *Phone mode & the agent name* below — it needs one `.env` value to match
-     your SIP dispatch rule.
+   - **Phone call** — press Start and **your phone rings**. The bench places an
+     outbound SIP call to `LK_SIP_CALL_TO` over `LK_SIP_TRUNK_ID` (both `.env`)
+     into a room it owns. Pick up, talk, then either **hang up or press Stop** —
+     both end the recording and run NC. See *Phone mode* below.
    - **Web call** — Start joins a fresh room and publishes your mic with
      browser echo-cancellation / noise-suppression / AGC **disabled** (we want
      the noise to survive so the NC has something to do).
@@ -145,29 +141,40 @@ removing. One mild signal worth chasing: the in-band variant beat its own contro
 (`dpdfnet2-8k+hush` 2.94 vs `dpdfnet2+hush` 2.80), which is the C1 hypothesis
 pointing the right way on one clip.
 
-## Phone mode & the agent name
+## Phone mode
 
-A LiveKit SIP dispatch rule names the agent it hands each inbound call to, and
-the room is created with that dispatch attached — so if nothing is registered
-under that name, **the call gets no agent and drops**. The recorder therefore
-registers under `LK_AGENT_NAME` (`.env`, default **`inbound-agent`**), matching
-the usual rule, and lets LiveKit dispatch it directly. Verified 2026-08-01 by
-simulating exactly what the rule does — create a `call-…` room, dispatch
-`inbound-agent`, join as a `sip_…` participant — and the session recorded 5.5 s
-with the live Krisp candidate attached.
+**Outbound**: Start creates a room, dispatches the recorder into it, then places a
+SIP participant on `LK_SIP_TRUNK_ID` dialling `LK_SIP_CALL_TO`. Your phone rings;
+you answer and talk.
 
-Consequences worth knowing:
+| `.env` | meaning |
+|---|---|
+| `LK_SIP_TRUNK_ID` | outbound trunk the call goes out on |
+| `LK_SIP_CALL_TO` | number to ring, E.164 |
+| `LK_SIP_RINGING_TIMEOUT_S` | give up ringing after this (default 45) |
+| `LK_AGENT_NAME` | what the recorder registers as (default `nc-bench-recorder`) |
 
-- **Never run ai-handler and the bench against the same LiveKit project at once.**
-  LiveKit load-balances jobs across every worker sharing an agent name, so a real
-  call could land on the bench — which only listens, so the caller gets silence.
-  If you need both, give the bench its own name here *and* its own dispatch rule.
-- The session is armed the moment you press Start, before any call exists, and a
-  claim flag makes the first job the only recorder — so the fallback poller can't
-  cause a second, duplicate job.
-- `dispatch_rule_individual` with a room prefix (one fresh room per call) is the
-  friendly case. A rule with a fixed room name would leave the room lingering
-  between calls, which the poller path deliberately skips as stale.
+Details that are load-bearing:
+
+- **The recorder is dispatched before the dial.** A job that arrives after the
+  answer misses the opening seconds — exactly where a scripted read starts.
+- **`wait_until_answered=True`, on a background task.** Busy / declined / no-answer
+  then raises instead of silently producing an empty recording, and the UI still
+  returns immediately to show "ringing". Failures surface as `call_failed`.
+- **`krisp_enabled=False` on the SIP participant.** The trunk-side filter would
+  clean the audio this bench exists to measure.
+- **Hang up = press Stop.** The job watches for the SIP participant leaving and
+  trips the same stop flag, so a call that ends by itself still runs NC. Pressing
+  Stop deletes the room, which hangs up the leg.
+- **`LK_AGENT_NAME` deliberately does *not* match your inbound SIP dispatch rule**
+  any more. Outbound dispatches explicitly, so sharing that name would only mean
+  the bench steals ai-handler's real inbound calls (LiveKit load-balances jobs
+  across every worker registered under a name). Running both at once is now safe.
+
+Superseded 2026-08-03: phone mode used to be inbound, arming before the call and
+adopting whichever room the SIP dispatch rule sent the job into, with a room
+poller as fallback. That required `LK_AGENT_NAME` to equal the rule's agent name,
+which is what made the bench and ai-handler mutually exclusive.
 
 ## Cloud candidates (Krisp & ai-coustics via LiveKit)
 
@@ -227,9 +234,8 @@ apples-to-apples number available.
 ## Notes / limits
 
 - **Dev tool**: no auth on any endpoint; single session at a time.
-- Phone mode records **only inbound (caller) audio** — the subscriber leg,
-  before any NC. If ai-handler is also running against the same LiveKit
-  project it will handle the call in parallel; we only subscribe.
+- Phone mode records **only the far end (you, on the phone)** — the subscriber
+  leg, before any NC. The bench publishes silence back, nothing else.
 - Hecttor init errors (e.g. the machine-bound installation ID going stale
   after an OS update — files under `~/Library/Application Support/Hecttor/`)
   surface as per-candidate errors, not crashes. Deleting those files forces

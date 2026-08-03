@@ -6,7 +6,6 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
-import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -163,8 +162,8 @@ async def session_start(body: dict):
             join = await recorder.start_web()
             await broadcast({"type": "session", "state": "web_ready", "room": join["room"]})
             return {"run_id": run_id, **join}
-        await recorder.start_phone()
-        return {"run_id": run_id}
+        dial = await recorder.start_phone()
+        return {"run_id": run_id, **dial}
     except Exception:
         _session = None
         raise
