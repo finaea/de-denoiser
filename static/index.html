@@ -36,6 +36,8 @@
   button.danger { background: #da3633; border-color: #f85149; }
   .btnrow { display: flex; gap: 8px; }
   .btnrow button { flex: 1; }
+  button.mini { padding: 2px 7px; font-size: 10px; border-radius: 5px;
+    text-transform: none; letter-spacing: 0; }
 
   .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px;
           border: 1px solid #30363d; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -131,7 +133,8 @@
   </div>
 
   <div class="box">
-    <h2>Candidates</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between">Candidates
+      <button id="btnAll" class="mini">select all</button></h2>
     <div id="candList" class="hint">loading…</div>
     <div class="hint">Tick what to run this session — singles or chains. Edit
       <code>candidates.json</code> to add combos; restart to reload.</div>
@@ -241,10 +244,26 @@ function applyLiveOnly() {
     if (src === "upload") { cb.checked = false; cb.disabled = true; }
     else cb.disabled = false;
   });
+  syncAllBtn();
 }
 function tickedCandidates() {
   return [...document.querySelectorAll("#candList input:checked")].map((x) => x.value);
 }
+// Select-all skips disabled boxes: unavailable candidates, and the live-only
+// ones the upload source greys out — ticking those would queue runs that fail.
+const tickable = () => [...document.querySelectorAll("#candList input:not(:disabled)")];
+function syncAllBtn() {
+  const boxes = tickable(), btn = $("btnAll");
+  btn.disabled = !boxes.length;
+  btn.textContent = boxes.length && boxes.every((cb) => cb.checked) ? "select none" : "select all";
+}
+$("btnAll").onclick = () => {
+  const boxes = tickable();
+  const on = boxes.some((cb) => !cb.checked); // anything unticked ⇒ tick everything
+  boxes.forEach((cb) => { cb.checked = on; });
+  syncAllBtn();
+};
+$("candList").addEventListener("change", syncAllBtn);
 
 // ---------------------------------------------------------------- timeline
 const tl = $("timeline"), tctx = tl.getContext("2d");
