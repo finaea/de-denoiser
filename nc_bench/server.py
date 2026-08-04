@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import subprocess
+import tempfile
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,8 +17,9 @@ import soundfile as sf
 import soxr
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 
-from . import config, lk_cloud, scoring, store, stt
+from . import config, export, lk_cloud, scoring, store, stt
 from .pipeline import run_chain
 from .processors import chain_available
 from .recorder import (
@@ -461,6 +465,52 @@ async def api_run(run_id: str):
         return store.load_meta(run_id)
     except (KeyError, FileNotFoundError):
         raise HTTPException(404, "run not found")
+
+
+@app.delete("/api/runs/{run_id}")
+async def delete_run(run_id: str):
+    """Remove a run and every wav in it.
+
+    Refuses the live one: the recorder still holds that directory and would go on
+    writing input.wav into a path that no longer exists.
+    """
+    if _session is not None and _session["run_id"] == run_id:
+        raise HTTPException(409, "that run is recording right now — stop the session first")
+    try:
+        d = store.run_dir(run_id)  # also rejects anything outside RUNS_DIR
+    except (KeyError, FileNotFoundError):
+        raise HTTPException(404, f"unknown run: {run_id}") from None
+    await asyncio.to_thread(shutil.rmtree, d)
+    return {"deleted": run_id}
+
+
+@app.get("/api/export")
+async def export_all(audio: str = "m4a"):
+    """Every run as one zip: a standalone viewer HTML plus all the audio.
+
+    Built to a temp file and handed to the browser's own download manager rather
+    than streamed or held in memory — with wav audio this is hundreds of MB.
+    Progress goes out on the existing websocket, since the build can take a
+    couple of minutes and a bare spinner would look hung.
+    """
+    if audio not in export.AUDIO_FORMATS:
+        raise HTTPException(400, f"audio must be one of {list(export.AUDIO_FORMATS)}")
+    tmpdir = Path(tempfile.mkdtemp(prefix="nc-export-"))
+    dest = tmpdir / f"nc-bench-{time.strftime('%Y%m%d-%H%M%S')}.zip"
+
+    async def progress(done: int, total: int) -> None:
+        await broadcast({"type": "export", "done": done, "total": total})
+
+    try:
+        stats = await export.build_zip(dest, audio, progress)
+    except Exception:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
+    await broadcast({"type": "export", "finished": True, **stats})
+    return FileResponse(
+        dest, filename=dest.name, media_type="application/zip",
+        background=BackgroundTask(shutil.rmtree, tmpdir, ignore_errors=True),
+    )
 
 
 @app.get("/api/runs/{run_id}/files/{name}")

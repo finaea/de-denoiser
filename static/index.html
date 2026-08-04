@@ -100,6 +100,14 @@
   <span id="pillRoom" class="pill">room: —</span>
   <span id="pillTimer" class="pill">rec: —</span>
   <span style="flex:1"></span>
+  <span id="exportWrap">
+    <select id="expFmt" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+      border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace">
+      <option value="m4a">compact audio (aac)</option>
+      <option value="wav">exact audio (wav)</option>
+    </select>
+    <button id="btnExport" class="mini" title="every run as one zip: a viewer html plus all the audio">⬇ export all runs</button>
+  </span>
   <span id="status"></span>
 </header>
 
@@ -164,7 +172,7 @@
 </aside>
 
 <main>
-  <div class="box">
+  <div class="box" id="tlBox">
     <h2 style="display:flex;align-items:center;justify-content:space-between">Subscriber timeline
       <span style="text-transform:none;letter-spacing:0;font-weight:400">
         <label for="waveScale" style="color:#6e7681">wave scale</label>
@@ -208,16 +216,23 @@
   <div class="box">
     <h2>History</h2>
     <table>
-      <thead><tr><th>run</th><th>source</th><th>duration</th><th>note</th><th>candidates</th><th>status</th></tr></thead>
+      <thead><tr><th>run</th><th>source</th><th>duration</th><th>note</th><th>candidates</th><th>status</th>
+        <th id="histDelHead"></th></tr></thead>
       <tbody id="histBody"></tbody>
     </table>
   </div>
 </main>
 </div>
 
+<!-- NC_EXPORT_DATA -->
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
+// Export mode: this same file, shipped in a zip with a data blob injected above
+// in place of the NC_EXPORT_DATA marker. One renderer serves both so the export
+// cannot drift from the app — it just reads runs from the blob instead of the
+// API, and waveform peaks from the blob instead of decoding the audio itself.
+const EX = window.NC_EXPORT || null;
 // notes are free text going into innerHTML and a title="" attribute
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -248,6 +263,7 @@ function setPhase(p, pillText) {
   $("btnStop").disabled = !(p === "armed" || p === "recording");
 }
 async function api(path, opts) {
+  if (EX) return exApi(path);
   const r = await fetch(path, opts);
   if (!r.ok) {
     let detail = r.statusText;
@@ -256,6 +272,30 @@ async function api(path, opts) {
   }
   return r.json();
 }
+// The only two reads the viewer needs. Everything else is a write or a live
+// query and has no meaning without the server, so it fails loudly instead of
+// silently returning nothing.
+function exApi(path) {
+  if (path === "/api/runs") return EX.runs;
+  const m = /^\/api\/runs\/([^/]+)$/.exec(path);
+  if (m) {
+    const r = EX.runs.find((x) => x.id === decodeURIComponent(m[1]));
+    if (r) return r;
+    throw new Error("run " + m[1] + " is not in this export");
+  }
+  throw new Error("not available in an exported view");
+}
+
+// Where a run's audio lives, and the key its precomputed peaks are filed under.
+// In an export the audio sits beside the html and its extension may have changed
+// (transcoded for size) — the peak key always uses the ORIGINAL wav name, so the
+// two stay decoupled.
+function runFile(runId, name) {
+  return EX
+    ? `runs/${runId}/${name.replace(/\.[^.]+$/, "." + EX.audio_ext)}`
+    : `/api/runs/${runId}/files/${name}`;
+}
+const peakKey = (runId, name) => `${runId}/${name}`;
 
 // ------------------------------------------------------------- candidates
 async function loadCandidates() {
@@ -481,6 +521,19 @@ function handleEvent(ev) {
     if (ev.entry) renderCandidateCard(ev.run_id, ev.entry);
     return;
   }
+  if (ev.type === "export") {
+    if (ev.finished) {
+      $("btnExport").disabled = false;
+      $("btnExport").textContent = "⬇ export all runs";
+      setStatus(`export ready — ${ev.runs} runs, ${ev.files} audio files, ` +
+        `${(ev.bytes / 1048576).toFixed(0)} MB` +
+        (ev.skipped ? ` (${ev.skipped} could not be encoded)` : "") + " — downloading");
+    } else {
+      $("btnExport").textContent = `⬇ ${ev.done}/${ev.total}`;
+      setStatus(`building export… ${ev.done}/${ev.total} audio files`);
+    }
+    return;
+  }
   if (ev.type === "run_done") {
     setPhase("idle"); recT0 = null;
     setStatus("run " + ev.run_id + " complete");
@@ -488,6 +541,26 @@ function handleEvent(ev) {
     loadHistory();
   }
 }
+
+// ----------------------------------------------------------------- export
+// A plain navigation, not fetch(): with exact-wav audio this zip is hundreds of
+// MB, and the browser's own download manager should own it rather than a blob
+// held in memory. There is no load event for a download, so the button is
+// re-enabled by the websocket's "finished" event (with a timeout as a backstop,
+// in case the socket dropped mid-build).
+$("btnExport").onclick = () => {
+  const fmt = $("expFmt").value;
+  $("btnExport").disabled = true;
+  $("btnExport").textContent = "⬇ building…";
+  setStatus("building export — encoding every run's audio, this takes a minute");
+  location.href = "/api/export?audio=" + encodeURIComponent(fmt);
+  setTimeout(() => {
+    if ($("btnExport").disabled) {
+      $("btnExport").disabled = false;
+      $("btnExport").textContent = "⬇ export all runs";
+    }
+  }, 15 * 60 * 1000);
+};
 
 // ------------------------------------------------------------- start/stop
 $("btnStart").onclick = async () => {
@@ -604,7 +677,7 @@ function prepareResultsSkeleton(runId, candIds) {
 
 // Re-transcribes from the wav already on disk — no NC re-run, so it is cheap and
 // the audio being compared cannot change underneath the other scores.
-const sttBtn = (cid) =>
+const sttBtn = (cid) => EX ? "" :  // needs the STT endpoint; an export has none
   `<button class="mini" data-stt="${esc(cid)}" style="margin-left:6px">↻ stt</button>`;
 
 document.addEventListener("click", async (ev) => {
@@ -631,7 +704,7 @@ function renderCandidateCard(runId, e) {
     card.id = "card-" + e.id;
     $("results").appendChild(card);
   }
-  const fileUrl = (n) => `/api/runs/${runId}/files/${n}`;
+  const fileUrl = (n) => runFile(runId, n);
   let html = `<div class="head"><span class="name">${e.label}</span>`;
   if (e.status === "done") {
     html += `<span class="meta">chain: ${(e.chain || []).join(" → ") || "passthrough"}</span>
@@ -674,7 +747,7 @@ function renderCandidateCard(runId, e) {
     }
   }
   card.innerHTML = html;
-  if (e.output) drawWave(fileUrl(e.output), "wave-" + e.id);
+  if (e.output) drawWave(fileUrl(e.output), "wave-" + e.id, peakKey(runId, e.output));
 }
 
 // The container rate lies: LiveKit hands every track over at 48 kHz, so an
@@ -697,7 +770,7 @@ function renderInputCard(runId, meta) {
   const div = $("results");
   const card = document.createElement("div");
   card.className = "cand-card";
-  const url = `/api/runs/${runId}/files/${meta.input.file}`;
+  const url = runFile(runId, meta.input.file);
   let inScores = "";
   const is = meta.input_scores;
   if (is && is.dnsmos) {
@@ -718,14 +791,24 @@ function renderInputCard(runId, meta) {
     <audio controls preload="metadata" src="${url}"></audio>
     <div class="dl"><a href="${url}" download="${runId}-input.wav">⬇ download input.wav</a></div>`;
   div.prepend(card);
-  drawWave(url, "wave-input");
+  drawWave(url, "wave-input", peakKey(runId, meta.input.file));
 }
 
 // Peaks are cached per canvas so changing the scale repaints instantly instead of
 // re-fetching and re-decoding 35 wavs.
-async function drawWave(url, canvasId) {
+async function drawWave(url, canvasId, pkey) {
   try {
     const cv = $(canvasId); if (!cv) return;
+    if (EX) {
+      // a file:// page cannot fetch() its own wav, so the peaks were computed
+      // server-side at export time from the original PCM
+      const peaks = decodePeaks(EX.peaks[pkey], cv.width);
+      if (!peaks) return;
+      state.wavePeaks[canvasId] = peaks;
+      state.fitCache = null;
+      paintWave(canvasId);
+      return;
+    }
     const buf = await (await fetch(url)).arrayBuffer();
     const actx = new (window.AudioContext || window.webkitAudioContext)();
     const audio = await actx.decodeAudioData(buf);
@@ -745,6 +828,24 @@ async function drawWave(url, canvasId) {
     actx.close();
     paintWave(canvasId);
   } catch { /* wave render is cosmetic */ }
+}
+
+// int16 min/max pairs, base64: [mins(cols), maxs(cols)] little-endian. int16 and
+// not int8 because the 64x and dB views exist to show residual noise near
+// -60 dBFS, which an int8 quantum (-42 dBFS) would flatten to silence.
+function decodePeaks(b64, cols) {
+  if (!b64) return null;
+  const bin = atob(b64);
+  if (bin.length !== cols * 4) return null;
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const i16 = new Int16Array(bytes.buffer);
+  const mins = new Float32Array(cols), maxs = new Float32Array(cols);
+  for (let x = 0; x < cols; x++) {
+    mins[x] = i16[x] / 32768;
+    maxs[x] = i16[cols + x] / 32768;
+  }
+  return { mins, maxs };
 }
 
 function paintWave(canvasId) {
@@ -848,7 +949,7 @@ async function loadRun(runId) {
   const meta = await api("/api/runs/" + runId);
   state.selectedRun = runId;
   $("resRun").textContent = "— " + runId + " (" + meta.source + ", " + meta.status + ")";
-  $("noteEdit").style.display = "flex";
+  $("noteEdit").style.display = EX ? "none" : "flex";  // no server to save to
   $("runNote").value = meta.note || "";
   showScriptUsed(meta.script);
   state.wavePeaks = {}; state.fitCache = null;
@@ -974,38 +1075,105 @@ async function loadHistory() {
     tr.innerHTML = `<td>${r.id}</td><td>${r.source}</td><td>${dur}</td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;color:#9aa7b4"
           title="${esc(r.note || "")}">${esc(r.note || "—")}</td>
-      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${cands}</td><td>${r.status}</td>`;
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${cands}</td><td>${r.status}</td>`
+      + (EX ? "" : `<td style="text-align:right"><button class="mini danger"
+           data-del="${esc(r.id)}" title="delete this run and its audio">✕</button></td>`);
     tr.onclick = () => loadRun(r.id);
     tb.appendChild(tr);
   }
 }
 
+// Capture phase, not bubble: this listener sits ABOVE the row, so on the way up
+// the row's own onclick would already have fired and loaded the run we are about
+// to delete. Capturing runs top-down, so stopPropagation() here reaches it first.
+$("histBody").addEventListener("click", async (ev) => {
+  const btn = ev.target.closest && ev.target.closest("button[data-del]");
+  if (!btn) return;
+  ev.stopPropagation();
+  const rid = btn.dataset.del;
+  if (!confirm(`Delete run ${rid} and all of its audio?\n\nThis cannot be undone.`)) return;
+  btn.disabled = true;
+  try {
+    await api("/api/runs/" + encodeURIComponent(rid), { method: "DELETE" });
+    if (state.selectedRun === rid) clearResults("Run " + rid + " was deleted.");
+    setStatus("deleted " + rid);
+    loadHistory();
+  } catch (e) {
+    setStatus("could not delete " + rid + ": " + e.message, true);
+    btn.disabled = false;
+  }
+}, true);
+
+// The loaded run just vanished from under the view — leaving its cards up would
+// offer audio and a download that now 404.
+function clearResults(msg) {
+  state.selectedRun = null;
+  state.wavePeaks = {}; state.fitCache = null;
+  $("results").innerHTML = `<div class="hint">${esc(msg)}</div>`;
+  $("rankings").innerHTML = ""; $("rankings").className = "hint";
+  $("resRun").textContent = "";
+  $("rankRun").textContent = "";
+  $("noteEdit").style.display = "none";
+  $("scriptUsed").style.display = "none";
+}
+
 // ------------------------------------------------------------------ init
-document.querySelectorAll('input[name="source"]').forEach((r) => {
-  r.onchange = () => {
-    $("uploadField").style.display = r.value === "upload" && r.checked ? "" : "none";
-    $("srcHint").textContent = {
-      phone: "Phone: Start places an outbound SIP call to LK_SIP_CALL_TO over LK_SIP_TRUNK_ID and records whoever answers. Hang up or press Stop to finish.",
-      web: "Web: Start joins a fresh room and publishes your mic with browser noise-suppression disabled (we want the noise).",
-      upload: "Upload: pick a file, press Start — it goes straight to processing. Live-only candidates (Krisp) are disabled here.",
-    }[r.value];
-    applyLiveOnly();
-  };
-});
-connectWS();
-// the recorder only receives phone calls if this name matches the project's SIP
-// dispatch rule — surfaced so a mismatch is visible instead of silent
-api("/api/config").then((c) => {
-  const el = $("agentHint");
-  el.textContent = c.worker_alive
-    ? `recorder registered as agent "${c.agent_name}"`
-    : `⚠ agent worker is NOT running — nothing will be recorded`;
-  if (!c.worker_alive) el.style.color = "#e06c75";
-  const sel = $("conc");
-  sel.innerHTML = (c.concurrency_choices || [1, 2, 4]).map((n) =>
-    `<option value="${n}"${n === c.concurrency_default ? " selected" : ""}>${n}</option>`).join("");
-  concHint();
-}).catch(() => {});
+function initLive() {
+  document.querySelectorAll('input[name="source"]').forEach((r) => {
+    r.onchange = () => {
+      $("uploadField").style.display = r.value === "upload" && r.checked ? "" : "none";
+      $("srcHint").textContent = {
+        phone: "Phone: Start places an outbound SIP call to LK_SIP_CALL_TO over LK_SIP_TRUNK_ID and records whoever answers. Hang up or press Stop to finish.",
+        web: "Web: Start joins a fresh room and publishes your mic with browser noise-suppression disabled (we want the noise).",
+        upload: "Upload: pick a file, press Start — it goes straight to processing. Live-only candidates (Krisp) are disabled here.",
+      }[r.value];
+      applyLiveOnly();
+    };
+  });
+  connectWS();
+  // the recorder only receives phone calls if this name matches the project's SIP
+  // dispatch rule — surfaced so a mismatch is visible instead of silent
+  api("/api/config").then((c) => {
+    const el = $("agentHint");
+    el.textContent = c.worker_alive
+      ? `recorder registered as agent "${c.agent_name}"`
+      : `⚠ agent worker is NOT running — nothing will be recorded`;
+    if (!c.worker_alive) el.style.color = "#e06c75";
+    const sel = $("conc");
+    sel.innerHTML = (c.concurrency_choices || [1, 2, 4]).map((n) =>
+      `<option value="${n}"${n === c.concurrency_default ? " selected" : ""}>${n}</option>`).join("");
+    concHint();
+  }).catch(() => {});
+  $("conc").onchange = concHint;
+  loadCandidates();
+  loadHistory();
+  setPhase("idle");
+}
+
+// Strip everything that needs the server it no longer has: the run controls, the
+// live recording timeline, the export button itself. What's left — results,
+// rankings, waveforms, playback, history — is the whole point.
+function initExport() {
+  document.querySelector("aside").remove();
+  $("tlBox").remove();
+  $("exportWrap").remove();
+  $("histDelHead").remove();
+  $("pillState").remove(); $("pillRoom").remove(); $("pillTimer").remove();
+  const banner = document.createElement("div");
+  banner.className = "box";
+  banner.style.cssText = "margin:14px 16px 0;border-color:#1f6feb";
+  banner.innerHTML = `<b>NC Bench export</b> — ${EX.runs.length} runs, generated
+    ${esc(EX.generated_at)}. Read-only snapshot: ${esc(EX.audio_note)}.` +
+    ((EX.skipped || []).length
+      ? ` <span style="color:#d29922">${EX.skipped.length} file(s) could not be
+          encoded and have no player.</span>`
+      : "");
+  document.querySelector(".layout").before(banner);
+  document.title = "NC Bench export — " + EX.generated_at;
+  loadHistory();
+  if (EX.runs.length) loadRun(EX.runs[0].id);
+  setStatus("");
+}
 // 1 is the only setting whose latency numbers are trustworthy — everything above
 // it has chains competing for the same cores, which inflates block p95.
 function concHint() {
@@ -1015,8 +1183,7 @@ function concHint() {
     : `${n} chains at once — faster, but <b>block p95 / init are inflated</b> by CPU contention. ` +
       "Quality metrics (DNSMOS, WER, band) are unaffected.";
 }
-$("conc").onchange = concHint;
-
+// wave scale/height work identically in both modes — they only touch the canvases
 $("waveScale").innerHTML = WAVE_SCALES.map((s) =>
   `<option value="${s.v}"${s.v === state.waveScale ? " selected" : ""}>${s.label}</option>`).join("");
 $("waveHeight").innerHTML = HEIGHT_MULS.map((m) =>
@@ -1026,9 +1193,8 @@ $("waveScale").onchange = $("waveHeight").onchange = () => {
   state.waveHeightSel = $("waveHeight").value;
   repaintAllWaves();
 };
-loadCandidates();
-loadHistory();
-setPhase("idle");
+
+if (EX) initExport(); else initLive();
 </script>
 </body>
 </html>
