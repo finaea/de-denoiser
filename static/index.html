@@ -108,6 +108,12 @@
     </div>
     <div class="hint" id="runHint">Start = arm the source and record the subscriber.
       Stop = end recording; every ticked candidate then runs (NC → STT).</div>
+    <div class="field" style="flex-direction:row;align-items:center;gap:8px;margin-top:10px">
+      <label for="conc" style="flex:1">Concurrent processing</label>
+      <select id="conc" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+        border-radius:6px;padding:3px 6px;font:11px ui-monospace,Menlo,monospace"></select>
+    </div>
+    <div class="hint" id="concHint" style="margin-top:6px"></div>
   </div>
 
   <div class="box">
@@ -400,6 +406,7 @@ $("btnStart").onclick = async () => {
       fd.append("candidates", JSON.stringify(cands));
       fd.append("script", $("script").value);
       fd.append("note", $("note").value);
+      fd.append("concurrency", $("conc").value);
       const res = await api("/api/upload", { method: "POST", body: fd });
       $("resRun").textContent = "— " + res.run_id;
       return;
@@ -408,7 +415,8 @@ $("btnStart").onclick = async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source, candidates: cands,
-        script: $("script").value, note: $("note").value }),
+        script: $("script").value, note: $("note").value,
+        concurrency: +$("conc").value }),
     });
     if (source === "web") {
       setPhase("armed", "joining room…");
@@ -765,7 +773,21 @@ api("/api/config").then((c) => {
     ? `recorder registered as agent "${c.agent_name}"`
     : `⚠ agent worker is NOT running — nothing will be recorded`;
   if (!c.worker_alive) el.style.color = "#e06c75";
+  const sel = $("conc");
+  sel.innerHTML = (c.concurrency_choices || [1, 2, 4]).map((n) =>
+    `<option value="${n}"${n === c.concurrency_default ? " selected" : ""}>${n}</option>`).join("");
+  concHint();
 }).catch(() => {});
+// 1 is the only setting whose latency numbers are trustworthy — everything above
+// it has chains competing for the same cores, which inflates block p95.
+function concHint() {
+  const n = +$("conc").value || 1;
+  $("concHint").innerHTML = n === 1
+    ? "Serial. Slowest, but the only setting whose <b>latency</b> columns are comparable."
+    : `${n} chains at once — faster, but <b>block p95 / init are inflated</b> by CPU contention. ` +
+      "Quality metrics (DNSMOS, WER, band) are unaffected.";
+}
+$("conc").onchange = concHint;
 loadCandidates();
 loadHistory();
 setPhase("idle");

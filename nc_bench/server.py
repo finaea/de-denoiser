@@ -29,6 +29,21 @@ from .recorder import (
 
 lk_cloud.preload()  # cloud NC plugins must register on the main thread
 
+# How many candidate chains process at once. Kept low by default: these are
+# CPU-bound ONNX graphs sharing one machine with a local STT endpoint, and the
+# per-block latency columns stop being comparable as soon as chains compete for
+# the CPU (see meta["concurrency"], recorded per run).
+CONCURRENCY_CHOICES = [1, 2, 3, 4, 6, 8]
+DEFAULT_CONCURRENCY = 2
+
+
+def _clamp_concurrency(value) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_CONCURRENCY
+    return max(1, min(max(CONCURRENCY_CHOICES), n))
+
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -108,6 +123,8 @@ async def api_config():
         "hecttor_model_default": config.HECTTOR_MODEL,
         "agent_name": config.LK_AGENT_NAME,
         "worker_alive": worker_alive(),
+        "concurrency_choices": CONCURRENCY_CHOICES,
+        "concurrency_default": DEFAULT_CONCURRENCY,
     }
 
 
@@ -155,6 +172,7 @@ async def session_start(body: dict):
             "recorder": recorder,
             "candidates": candidate_ids,
             "script": (body.get("script") or "").strip(),
+            "concurrency": _clamp_concurrency(body.get("concurrency")),
         }
 
     try:
@@ -205,7 +223,8 @@ async def session_stop():
     meta["status"] = "processing"
     store.save_meta(sess["run_id"], meta)
     asyncio.create_task(
-        _process_run(sess["run_id"], sess["candidates"], live_results, sess["script"])
+        _process_run(sess["run_id"], sess["candidates"], live_results,
+                     sess["script"], sess["concurrency"])
     )
     return {"run_id": sess["run_id"], "status": "processing"}
 
@@ -236,6 +255,7 @@ async def upload(
     candidates: str = Form(...),
     script: str = Form(""),
     note: str = Form(""),
+    concurrency: int = Form(DEFAULT_CONCURRENCY),
 ):
     candidate_ids = json.loads(candidates)
     if not candidate_ids:
@@ -278,7 +298,8 @@ async def upload(
     }
     meta["status"] = "processing"
     store.save_meta(run_id, meta)
-    asyncio.create_task(_process_run(run_id, candidate_ids, None, script.strip()))
+    asyncio.create_task(_process_run(run_id, candidate_ids, None, script.strip(),
+                                     _clamp_concurrency(concurrency)))
     return {"run_id": run_id, "status": "processing"}
 
 
@@ -290,6 +311,7 @@ async def _process_run(
     candidate_ids: list[str],
     live_results: dict | None = None,
     script: str = "",
+    concurrency: int = DEFAULT_CONCURRENCY,
 ) -> None:
     live_results = live_results or {}
     run_dir = store.run_dir(run_id)
@@ -298,6 +320,9 @@ async def _process_run(
     meta = store.load_meta(run_id)
     meta["candidates"] = []
     meta["script"] = script
+    # Recorded because it invalidates the latency columns: block_ms_p95 measured
+    # while N chains share the CPU is not the same number as measured alone.
+    meta["concurrency"] = concurrency
 
     try:
         input_scores = await asyncio.to_thread(scoring.score_input, input_wav)
@@ -306,7 +331,7 @@ async def _process_run(
     meta["input_scores"] = input_scores
     store.save_meta(run_id, meta)
 
-    for cid in candidate_ids:
+    async def _one(cid: str) -> dict:
         cand = known[cid]
         entry = {"id": cid, "label": cand["label"]}
         await broadcast({"type": "progress", "run_id": run_id, "candidate": cid, "stage": "nc"})
@@ -351,13 +376,30 @@ async def _process_run(
         except Exception as e:
             entry["status"] = "error"
             entry["error"] = str(e)
-        meta["candidates"].append(entry)
+        return entry
+
+    # Slot per candidate so meta stays in ticked order however completion
+    # interleaves — otherwise the same candidate set lands in a different order
+    # every run and two runs stop being readable side by side.
+    entries: list[dict | None] = [None] * len(candidate_ids)
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _slot(i: int, cid: str) -> None:
+        async with sem:
+            entry = await _one(cid)
+        entries[i] = entry
+        # No await between mutating and saving, so concurrent slots cannot
+        # interleave a half-written meta.json.
+        meta["candidates"] = [e for e in entries if e is not None]
         store.save_meta(run_id, meta)
         await broadcast(
             {"type": "progress", "run_id": run_id, "candidate": cid,
              "stage": entry["status"], "entry": entry}
         )
 
+    await asyncio.gather(*(_slot(i, cid) for i, cid in enumerate(candidate_ids)))
+
+    meta["candidates"] = [e for e in entries if e is not None]
     meta["status"] = "done"
     store.save_meta(run_id, meta)
     await broadcast({"type": "run_done", "run_id": run_id})
