@@ -173,7 +173,7 @@
 
 <main>
   <div class="box" id="tlBox">
-    <h2 style="display:flex;align-items:center;justify-content:space-between">Subscriber timeline
+    <h2 style="display:flex;align-items:center;justify-content:space-between"><span id="tlTitle">Subscriber timeline</span>
       <span style="text-transform:none;letter-spacing:0;font-weight:400">
         <label for="waveScale" style="color:#6e7681">wave scale</label>
         <select id="waveScale" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
@@ -181,6 +181,9 @@
         <label for="waveHeight" style="color:#6e7681;margin-left:8px">height</label>
         <select id="waveHeight" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
           border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace"></select>
+        <label for="vadShow" style="color:#6e7681;margin-left:8px;cursor:pointer"
+          title="Silero VAD spans — the turns production would cut and send to STT">
+          <input type="checkbox" id="vadShow" checked style="vertical-align:-1px" /> VAD</label>
       </span></h2>
     <canvas id="timeline" class="timeline" width="1600" height="280"></canvas>
     <div class="hint" id="tlHint">Live RMS of the subscribed track (20 ms windows).
@@ -204,6 +207,23 @@
       <div id="scriptUsedText" style="background:#0d1117;border:1px solid #30363d;
         border-radius:6px;padding:7px 9px;font:12px/1.55 ui-monospace,Menlo,monospace;
         white-space:pre-wrap;color:#e6edf3"></div>
+    </div>
+    <!-- The thresholds that produced THIS run's green spans. Saved per run, so a
+         history re-run at different settings is visible here instead of quietly
+         making two runs' spans incomparable. -->
+    <div id="vadBar" style="display:none;margin-bottom:10px">
+      <div style="font-size:11px;color:#6e7681;margin-bottom:3px">
+        Silero VAD thresholds used for this run <span id="vadBarNote"></span></div>
+      <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px">
+        <div id="vadFields" style="display:flex;flex-wrap:wrap;gap:4px 14px"></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+          <button id="btnVad" class="mini">↻ re-run VAD on this run</button>
+          <span class="hint" style="margin:0">Same model and state machine ai-handler
+            runs. Production cuts the call into turns with this and sends <b>one turn
+            per STT request</b> — the green spans are what each candidate leaves for
+            the recogniser. Re-running touches nothing but the spans.</span>
+        </div>
+      </div>
     </div>
     <div id="results"><div class="hint">No run selected. Record, upload, or pick one from history.</div></div>
   </div>
@@ -247,6 +267,9 @@ const state = {
                           // before linear gain clips; see effMul()
   wavePeaks: {},          // canvasId -> {mins, maxs}, so rescaling never refetches
   fitCache: null,         // memoised effMul() for "fit"; null = recompute
+  vadSpans: {},           // canvasId -> {segments, duration_s} drawn under the wave
+  vadShow: true,
+  runMeta: null,          // the loaded run, for "delta vs no-NC" on each card
 };
 
 // ---------------------------------------------------------------- helpers
@@ -372,6 +395,156 @@ $("btnNote").onclick = async () => {
     loadHistory();
   } catch (e) {
     setStatus(e.message, true);
+  }
+};
+
+// --------------------------------------------------------------- vad panel
+// Seeded from .env (which mirrors ai-handler's production config) so the page
+// opens showing what production would do; change a field and re-run to ask what
+// a different threshold would have done to every recording you already have.
+const VAD_FIELDS = [
+  ["activation_threshold", "activation", "p(speech) that starts a span"],
+  ["deactivation_threshold", "deactivation", "p(speech) below which it can end"],
+  ["min_speech_duration", "min speech (s)", "shorter blips are not a turn"],
+  ["min_silence_duration", "min silence (s)", "pause that ends a turn"],
+  ["prefix_padding_duration", "prefix pad (s)", "back-dates a span's start"],
+];
+// The rate is an enum, not a range: silero has real weights for exactly 8 k and
+// 16 k (different window/context per rate), so this is a select, not a number
+// box that could be nudged to 12000.
+const RATE_WHY = "silero inference rate — 8 k matches a narrowband phone leg, "
+  + "16 k a wideband mic. ai-handler pins 16 k for every source.";
+function rateLabel(hz) {
+  return hz === 8000 ? "8 kHz (narrowband)" : hz === 16000 ? "16 kHz (wideband)" : hz + " Hz";
+}
+function renderVadFields(values, limits) {
+  const ro = !!EX;  // an export has no server to re-run against
+  const fields = VAD_FIELDS.map(([k, label, why]) => {
+    const lim = (limits || {})[k] || [0, 1];
+    const v = values[k];
+    if (ro) {
+      return `<span class="meta" title="${esc(why)}">${label}
+        <b style="color:#e6edf3">${v ?? "—"}</b></span>`;
+    }
+    return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#9aa7b4">
+      <label for="vad-${k}" title="${esc(why)}">${label}</label>
+      <input type="number" id="vad-${k}" value="${v ?? ""}" step="0.01"
+        min="${lim[0]}" max="${lim[1]}" title="${esc(why)} · allowed ${lim[0]}–${lim[1]}"
+        style="width:62px;background:#161b22;color:#e6edf3;border:1px solid #30363d;
+        border-radius:5px;padding:2px 5px;font:11px ui-monospace,Menlo,monospace" />
+    </span>`;
+  });
+  const sr = values.sample_rate;
+  if (ro) {
+    fields.push(`<span class="meta" title="${esc(RATE_WHY)}">rate
+      <b style="color:#e6edf3">${sr ? rateLabel(sr) : "—"}</b></span>`);
+  } else {
+    const opts = (state.vadRates || [8000, 16000]).map((hz) =>
+      `<option value="${hz}"${+sr === hz ? " selected" : ""}>${rateLabel(hz)}</option>`).join("");
+    fields.push(`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#9aa7b4">
+      <label for="vad-sample_rate" title="${esc(RATE_WHY)}">rate</label>
+      <select id="vad-sample_rate" title="${esc(RATE_WHY)}"
+        style="background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:5px;
+        padding:2px 5px;font:11px ui-monospace,Menlo,monospace">${opts}</select>
+    </span>`);
+  }
+  $("vadFields").innerHTML = fields.join("");
+}
+
+// Seeds the panel from the run's OWN saved thresholds, falling back to the .env
+// defaults for a run recorded before VAD existed. Flags a divergence from the
+// defaults so "why does this run look different" has a visible answer.
+// What this run SHOULD default to: .env thresholds, and the rate implied by the
+// run's own source — a phone leg defaults to 8 kHz even though the global default
+// is 16 kHz, so an unmeasured phone run must not be seeded with 16 k.
+function vadExpected(meta) {
+  const e = Object.assign({}, state.vadDefaults || {});
+  const bySource = (state.vadSourceRates || {})[(meta || {}).source];
+  if (bySource) e.sample_rate = bySource;
+  return e;
+}
+
+function showVadBar(meta) {
+  // meta.vad_params is authoritative, but every span set also records the
+  // thresholds that produced it — so a run measured before that key existed
+  // still shows its real settings instead of claiming it has none.
+  let saved = (meta && meta.vad_params) || vadParamsFromSpans(meta) || null;
+  if (saved) {
+    saved = Object.assign({}, saved);
+    // Measured before the rate was selectable. It was the plugin default then,
+    // and leaving it undefined would let the <select> fall to its first option
+    // and label a 16 kHz measurement as 8 kHz.
+    if (saved.sample_rate == null) saved.sample_rate = 16000;
+  }
+  const expected = vadExpected(meta);
+  $("vadBar").style.display = "";
+  renderVadFields(saved || expected, state.vadLimits);
+
+  const amber = (t) => `<span style="color:#d29922">${t}</span>`;
+  const grey = (t) => `<span style="color:#6e7681">${t}</span>`;
+  const notes = [];
+  if (!saved) {
+    notes.push(amber("none saved yet; showing this source's defaults — re-run to measure"));
+  } else if (EX) {
+    // an export never fetches /api/config, so there is nothing to compare
+    // against; claiming "these are the defaults" would be a guess
+    notes.push(grey("as measured when this export was made"));
+  } else {
+    // The rate is called out separately because ai-handler pins 16 kHz for every
+    // source: anything else is a deliberate experiment, not a production mirror.
+    // Both directions are worth saying — measured off this source's default is
+    // just as surprising as measured off production's.
+    if (+saved.sample_rate !== 16000) {
+      notes.push(amber(`${+saved.sample_rate / 1000} kHz inference — ai-handler pins
+        16 kHz, so these spans are an experiment, not what production would cut`));
+    } else if (+expected.sample_rate !== 16000) {
+      notes.push(grey(`16 kHz (production parity) — this source defaults to
+        ${+expected.sample_rate / 1000} kHz; switch the rate and re-run to compare`));
+    }
+    const thresholdsDiffer = VAD_FIELDS.some(([k]) => +saved[k] !== +expected[k]);
+    if (thresholdsDiffer) {
+      notes.push(amber("thresholds differ from .env, so these spans are NOT comparable "
+        + "with a run measured at the defaults"));
+    }
+    if (!notes.length) notes.push(grey("the ai-handler production defaults for this source"));
+  }
+  $("vadBarNote").innerHTML = "— " + notes.join(grey(" · "));
+}
+
+function vadParamsFromSpans(meta) {
+  if (!meta) return null;
+  const src = [meta.input_vad, ...(meta.candidates || []).map((c) => c.vad)];
+  for (const v of src) if (v && v.params) return v.params;
+  return null;
+}
+
+function vadParams() {
+  const p = {};
+  for (const [k] of VAD_FIELDS) {
+    const el = $("vad-" + k);
+    if (el) p[k] = parseFloat(el.value);
+  }
+  const sr = $("vad-sample_rate");
+  if (sr) p.sample_rate = parseInt(sr.value, 10);
+  return p;
+}
+$("btnVad").onclick = async () => {
+  const btn = $("btnVad");
+  if (!state.selectedRun) { setStatus("load a run first", true); return; }
+  btn.disabled = true; btn.textContent = "↻ re-running…";
+  try {
+    const r = await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/vad`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ params: vadParams() }),
+    });
+    setStatus(`VAD re-run on ${r.run_id}: ${r.files} files` +
+      (r.failed ? ` · ${r.failed} failed` : ""));
+    loadRun(state.selectedRun);   // repaints every span from the stored result
+  } catch (e) {
+    setStatus("VAD re-run failed: " + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = "↻ re-run VAD on this run";
   }
 };
 
@@ -519,6 +692,11 @@ function handleEvent(ev) {
       if (ev.stage === "stt") el.innerHTML = '<span class="spin">◐</span> transcribing…';
     }
     if (ev.entry) renderCandidateCard(ev.run_id, ev.entry);
+    return;
+  }
+  if (ev.type === "vad") {
+    if (ev.finished) setStatus(`VAD re-run done on ${ev.run_id} — ${ev.files} files`);
+    else setStatus(`re-running VAD on ${ev.run_id}… ${ev.done}/${ev.total} files`);
     return;
   }
   if (ev.type === "export") {
@@ -740,6 +918,7 @@ function renderCandidateCard(runId, e) {
     if (e.latency) {
       html += `<div class="meta">latency: init ${e.latency.init_ms} ms · per-20ms-block p95 ${e.latency.block_ms_p95} ms · algo delay ${e.latency.algo_delay_ms} ms</div>`;
     }
+    html += vadLine(e.vad, e.vad_error, baseVad());
     if (e.output) {
       html += `<canvas class="wave" width="1600" height="128" id="wave-${e.id}"></canvas>
         <audio controls preload="metadata" src="${fileUrl(e.output)}"></audio>
@@ -747,7 +926,36 @@ function renderCandidateCard(runId, e) {
     }
   }
   card.innerHTML = html;
-  if (e.output) drawWave(fileUrl(e.output), "wave-" + e.id, peakKey(runId, e.output));
+  if (e.output) {
+    state.vadSpans["wave-" + e.id] = e.vad || null;
+    drawWave(fileUrl(e.output), "wave-" + e.id, peakKey(runId, e.output));
+  }
+}
+
+// The raw leg's spans, when the run is loaded from history. Progress events carry
+// one entry at a time and no run meta, so live rendering simply shows no delta
+// rather than comparing against a stale baseline.
+function baseVad() {
+  const c = ((state.runMeta || {}).candidates || []).find((x) => x.id === "none");
+  return (c && c.vad) || (state.runMeta || {}).input_vad || null;
+}
+
+// Reads as "what production's turn segmentation did to this audio". Spans and
+// total speech are the two numbers that matter: fewer spans means turns were
+// merged or lost, less speech means onsets/tails were shaved.
+function vadLine(v, err, base) {
+  if (err) return `<div class="err">VAD failed: ${esc(err)}</div>`;
+  if (!v) return "";
+  if (v.error) return `<div class="err">VAD failed: ${esc(v.error)}</div>`;
+  let d = "";
+  if (base && base !== v && base.duration_s) {
+    const ds = v.speech_s - base.speech_s, dn = v.n - base.n;
+    const col = Math.abs(ds) < 0.05 && dn === 0 ? "#6e7681" : ds < 0 ? "#e06c75" : "#4ec9b0";
+    d = ` <span style="color:${col}">· Δ vs no-NC ${ds >= 0 ? "+" : "−"}${Math.abs(ds).toFixed(2)} s,
+          ${dn >= 0 ? "+" : "−"}${Math.abs(dn)} span${Math.abs(dn) === 1 ? "" : "s"}</span>`;
+  }
+  return `<div class="meta"><b>VAD</b> ${v.n} span${v.n === 1 ? "" : "s"} ·
+    ${v.speech_s.toFixed(2)} s speech (${(v.coverage * 100).toFixed(0)}% of the file)${d}</div>`;
 }
 
 // The container rate lies: LiveKit hands every track over at 48 kHz, so an
@@ -787,10 +995,12 @@ function renderInputCard(runId, meta) {
       <span class="meta">${meta.input.duration_s}s · ${meta.input.sample_rate} Hz
       ${meta.input.original_name ? " · " + meta.input.original_name : ""}</span></div>
     ${inScores}
+    ${vadLine(meta.input_vad, null, null)}
     <canvas class="wave" width="1600" height="128" id="wave-input"></canvas>
     <audio controls preload="metadata" src="${url}"></audio>
     <div class="dl"><a href="${url}" download="${runId}-input.wav">⬇ download input.wav</a></div>`;
   div.prepend(card);
+  state.vadSpans["wave-input"] = meta.input_vad || null;
   drawWave(url, "wave-input", peakKey(runId, meta.input.file));
 }
 
@@ -857,6 +1067,7 @@ function paintWave(canvasId) {
   const ctx = cv.getContext("2d");
   const W = cv.width, H = cv.height, mid = H / 2;
   ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, W, H);
+  paintVad(ctx, canvasId, W, H);
   // in dB mode the sign is meaningless (log of |a|), so draw a symmetric
   // envelope rather than pretending the shape above/below zero survived
   const db = state.waveScale === "db";
@@ -885,6 +1096,28 @@ function paintWave(canvasId) {
     const x = (audio.currentTime / audio.duration) * W;
     ctx.fillStyle = audio.paused ? "#9aa7b4" : "#f0883e";
     ctx.fillRect(Math.min(x, W - 3), 0, 3, H);
+  }
+}
+
+// Silero VAD spans, drawn UNDER the waveform so the audio stays readable — these
+// are the turns production would cut and send to STT one at a time, which is why
+// a chain that shaves an onset costs a word before the recogniser ever runs.
+// Positioned from the span's own duration_s, never from the <audio> element:
+// metadata may not have loaded, and in an export there is no decodable source.
+function paintVad(ctx, canvasId, W, H) {
+  if (!state.vadShow) return;
+  const v = state.vadSpans[canvasId];
+  if (!v || !v.duration_s || !(v.segments || []).length) return;
+  for (const [s, e] of v.segments) {
+    const x0 = Math.max(0, (s / v.duration_s) * W);
+    const x1 = Math.min(W, (e / v.duration_s) * W);
+    if (x1 <= x0) continue;
+    ctx.fillStyle = "rgba(63,185,80,0.16)";
+    ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
+    // edges, so two spans separated by a short pause don't read as one
+    ctx.fillStyle = "rgba(63,185,80,0.55)";
+    ctx.fillRect(x0, 0, 1, H);
+    ctx.fillRect(Math.max(x0, x1 - 1), 0, 1, H);
   }
 }
 
@@ -948,11 +1181,13 @@ document.addEventListener("play", () => { if (!playRaf) playheadLoop(); }, true)
 async function loadRun(runId) {
   const meta = await api("/api/runs/" + runId);
   state.selectedRun = runId;
+  state.runMeta = meta;   // baseVad() reads the no-NC span set off this
   $("resRun").textContent = "— " + runId + " (" + meta.source + ", " + meta.status + ")";
   $("noteEdit").style.display = EX ? "none" : "flex";  // no server to save to
   $("runNote").value = meta.note || "";
   showScriptUsed(meta.script);
-  state.wavePeaks = {}; state.fitCache = null;
+  showVadBar(meta);
+  state.wavePeaks = {}; state.fitCache = null; state.vadSpans = {};
                          // canvases are about to be replaced; stale peaks would
                          // repaint onto whatever canvas reuses the id
   $("results").innerHTML = "";
@@ -1115,6 +1350,9 @@ function clearResults(msg) {
   $("rankRun").textContent = "";
   $("noteEdit").style.display = "none";
   $("scriptUsed").style.display = "none";
+  $("vadBar").style.display = "none";
+  state.runMeta = null;
+  state.vadSpans = {};
 }
 
 // ------------------------------------------------------------------ init
@@ -1143,6 +1381,16 @@ function initLive() {
     sel.innerHTML = (c.concurrency_choices || [1, 2, 4]).map((n) =>
       `<option value="${n}"${n === c.concurrency_default ? " selected" : ""}>${n}</option>`).join("");
     concHint();
+    state.vadLimits = c.vad_limits || {};
+    state.vadDefaults = c.vad_defaults || {};
+    state.vadRates = c.vad_rates || [8000, 16000];
+    state.vadSourceRates = c.vad_source_rates || {};
+    if (c.vad_enabled === false) {
+      $("btnVad").disabled = true;
+      $("btnVad").title = "VAD_ENABLED is false in .env — no spans are computed";
+    }
+    // a run may already be loaded by the time /api/config lands
+    if (state.runMeta) showVadBar(state.runMeta);
   }).catch(() => {});
   $("conc").onchange = concHint;
   loadCandidates();
@@ -1155,8 +1403,15 @@ function initLive() {
 // rankings, waveforms, playback, history — is the whole point.
 function initExport() {
   document.querySelector("aside").remove();
-  $("tlBox").remove();
+  // Keep the box — it holds the scale / height / VAD controls, which work fine
+  // offline. Only the live recording canvas and its hint have no meaning here.
+  $("timeline").remove();
+  $("tlTitle").textContent = "View";
+  $("tlHint").innerHTML = `Scale and height apply to every waveform below —
+    <b>click any of them to play from that point</b>. Green spans are Silero VAD
+    speech: the turns production would have cut and sent to STT one at a time.`;
   $("exportWrap").remove();
+  $("btnVad").remove();       // read-only: renderVadFields drops the inputs too
   $("histDelHead").remove();
   $("pillState").remove(); $("pillRoom").remove(); $("pillTimer").remove();
   const banner = document.createElement("div");
@@ -1191,6 +1446,10 @@ $("waveHeight").innerHTML = HEIGHT_MULS.map((m) =>
 $("waveScale").onchange = $("waveHeight").onchange = () => {
   state.waveScale = $("waveScale").value;
   state.waveHeightSel = $("waveHeight").value;
+  repaintAllWaves();
+};
+$("vadShow").onchange = () => {
+  state.vadShow = $("vadShow").checked;
   repaintAllWaves();
 };
 

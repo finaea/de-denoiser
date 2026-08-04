@@ -19,7 +19,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, W
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
-from . import config, export, lk_cloud, scoring, store, stt
+from . import config, export, lk_cloud, scoring, store, stt, vad
 from .pipeline import run_chain
 from .processors import chain_available
 from .recorder import (
@@ -129,6 +129,12 @@ async def api_config():
         "worker_alive": worker_alive(),
         "concurrency_choices": CONCURRENCY_CHOICES,
         "concurrency_default": DEFAULT_CONCURRENCY,
+        "vad_enabled": config.VAD_ENABLED,
+        # .env + the per-source rate seed the UI; the UI can then diverge
+        "vad_defaults": vad.defaults(),
+        "vad_limits": vad.LIMITS,
+        "vad_rates": list(vad.SUPPORTED_RATES),
+        "vad_source_rates": vad.SOURCE_RATES,
     }
 
 
@@ -375,6 +381,15 @@ async def _process_run(
     except Exception as e:
         input_scores = {"error": str(e)}
     meta["input_scores"] = input_scores
+    # The raw leg's spans are the reference every candidate is read against: a
+    # chain that drops a span dropped a turn production would have transcribed.
+    # rate follows the source: a phone leg is narrowband whatever it arrives as
+    vad_params = vad.defaults(meta.get("source"))
+    meta["vad_params"] = vad_params
+    try:
+        meta["input_vad"] = await vad.analyze(input_wav, vad_params)
+    except Exception as e:
+        meta["input_vad"] = {"error": str(e)}
     store.save_meta(run_id, meta)
 
     async def _one(cid: str) -> dict:
@@ -418,6 +433,12 @@ async def _process_run(
                 )
             except Exception as e:
                 entry["scores_error"] = str(e)
+            # Not in score_output: that runs in a worker thread and the VAD needs
+            # the event loop (the plugin's stream is async).
+            try:
+                entry["vad"] = await vad.analyze(out_wav, vad_params)
+            except Exception as e:
+                entry["vad_error"] = str(e)
             entry["status"] = "done"
         except Exception as e:
             entry["status"] = "error"
@@ -465,6 +486,62 @@ async def api_run(run_id: str):
         return store.load_meta(run_id)
     except (KeyError, FileNotFoundError):
         raise HTTPException(404, "run not found")
+
+
+@app.post("/api/runs/{run_id}/vad")
+async def rerun_vad(run_id: str, body: dict | None = None):
+    """Re-analyze one run's input and every candidate output at the given
+    thresholds.
+
+    Only `vad` keys are written — no NC chain re-runs, no STT — so this is cheap
+    and cannot move any other number in a stored run. Also the backfill path: a
+    run recorded before VAD existed gets its spans the first time this is called.
+
+    The thresholds are saved as meta["vad_params"] and shown above the run's
+    results. That is what makes per-run re-runs safe: spans are only comparable
+    across runs when the thresholds match, so each run has to carry the ones that
+    produced it rather than leaving the history silently mixed.
+    """
+    try:
+        meta = store.load_meta(run_id)
+        run_dir = store.run_dir(run_id)
+    except (KeyError, FileNotFoundError):
+        raise HTTPException(404, f"unknown run: {run_id}") from None
+    # unspecified keys fall back to this run's SOURCE default, not a global one
+    p = vad.clean((body or {}).get("params"), meta.get("source"))
+
+    names = []
+    if (meta.get("input") or {}).get("file"):
+        names.append(meta["input"]["file"])
+    names += [c["output"] for c in meta.get("candidates") or [] if c.get("output")]
+    names = list(dict.fromkeys(names))
+
+    done = failed = 0
+    for name in names:
+        wav = run_dir / name
+        result = None
+        if wav.is_file():
+            try:
+                result = await vad.analyze(wav, p)
+            except Exception as e:
+                result = {"error": str(e)}
+                failed += 1
+        if (meta.get("input") or {}).get("file") == name:
+            meta["input_vad"] = result
+        for c in meta.get("candidates") or []:
+            if c.get("output") == name:
+                c["vad"] = result
+                c.pop("vad_error", None)
+        done += 1
+        if done % 5 == 0 or done == len(names):
+            await broadcast({"type": "vad", "run_id": run_id, "done": done,
+                             "total": len(names)})
+
+    meta["vad_params"] = p
+    store.save_meta(run_id, meta)
+    stats = {"run_id": run_id, "files": done, "failed": failed, "params": p}
+    await broadcast({"type": "vad", "finished": True, **stats})
+    return stats
 
 
 @app.delete("/api/runs/{run_id}")

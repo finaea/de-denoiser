@@ -44,6 +44,21 @@ HECTTOR_ENHANCER_WEIGHT = float(_get("HECTTOR_ENHANCER_WEIGHT", "1.0"))
 HECTTOR_SAMPLE_RATE = int(_get("HECTTOR_SAMPLE_RATE", "16000"))
 HECTTOR_CHUNK_MS = int(_get("HECTTOR_CHUNK_MS", "20"))
 
+# ---- Silero VAD ----
+# Same model file and the same livekit-agents state machine ai-handler runs, so
+# the spans drawn on each timeline are the spans production would cut turns on.
+# Defaults mirror ai-handler's config.example.ini [livekit] — change them here to
+# ask "what would production's VAD have done with different thresholds", but
+# remember a divergence makes the highlight stop describing production.
+VAD_ENABLED = _get("VAD_ENABLED", "true").lower() == "true"
+VAD_ACTIVATION_THRESHOLD = float(_get("VAD_ACTIVATION_THRESHOLD", "0.50"))
+VAD_DEACTIVATION_THRESHOLD = float(_get("VAD_DEACTIVATION_THRESHOLD", "0.50"))
+VAD_MIN_SPEECH_DURATION = float(_get("VAD_MIN_SPEECH_DURATION", "0.12"))
+VAD_MIN_SILENCE_DURATION = float(_get("VAD_MIN_SILENCE_DURATION", "0.55"))
+# Not set by ai-handler, so this is the plugin's own default. It back-dates each
+# span's start, which is why a highlight can begin before audible speech.
+VAD_PREFIX_PADDING_DURATION = float(_get("VAD_PREFIX_PADDING_DURATION", "0.5"))
+
 MODELS_DIR = (PROJECT_ROOT / _get("MODELS_DIR", "./models")).resolve()
 DTLN_MODEL_DIR = (PROJECT_ROOT / _get("DTLN_MODEL_DIR", "./models/dtln")).resolve()
 # ffmpeg's arnndn needs a weights file; sh = "somnolent hogwash" (general speech)
