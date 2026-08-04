@@ -80,6 +80,8 @@
   th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #21262d; font-variant-numeric: tabular-nums; }
   th { color: #6e7681; font-weight: 600; }
   tr.run { cursor: pointer; }
+  tr.rank { cursor: pointer; }
+  tr.rank:hover td { background: #1c2430; }
   tr.run:hover td { background: #161b22; }
   tr.run.sel td { background: #1c2430; }
   .spin { display: inline-block; animation: spin 1s linear infinite; }
@@ -134,6 +136,15 @@
   </div>
 
   <div class="box">
+    <h2>Run notes (optional)</h2>
+    <textarea id="note" placeholder="Conditions worth remembering when you revisit this run: &quot;someone talking beside me&quot;, &quot;speakerphone at arm's length&quot;, &quot;quiet room&quot;."
+      style="width:100%;min-height:44px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,monospace;resize:vertical"></textarea>
+    <div class="hint">Kept out of the reference script on purpose — describing the room
+      in there would be scored as words you failed to say. Shows in history, and stays
+      editable once the run is loaded.</div>
+  </div>
+
+  <div class="box">
     <h2 style="display:flex;align-items:center;justify-content:space-between">Candidates
       <button id="btnAll" class="mini">select all</button></h2>
     <div id="candList" class="hint">loading…</div>
@@ -151,6 +162,21 @@
 
   <div class="box">
     <h2>Results <span id="resRun" style="text-transform:none;color:#9aa7b4"></span></h2>
+    <div id="noteEdit" style="display:none;gap:6px;margin-bottom:8px">
+      <input id="runNote" placeholder="note for this run — what were the conditions?"
+        style="flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:5px 8px;font:11px/1.5 ui-monospace,Menlo,monospace" />
+      <button id="btnNote" class="mini">save note</button>
+    </div>
+    <!-- the script this run was actually scored against. Every WER on the cards
+         below is relative to this exact text, so revisiting a run without it
+         means the numbers cannot be interpreted. -->
+    <div id="scriptUsed" style="display:none;margin-bottom:10px">
+      <div style="font-size:11px;color:#6e7681;margin-bottom:3px">
+        Reference script used for this run <span id="scriptUsedWords"></span></div>
+      <div id="scriptUsedText" style="background:#0d1117;border:1px solid #30363d;
+        border-radius:6px;padding:7px 9px;font:12px/1.55 ui-monospace,Menlo,monospace;
+        white-space:pre-wrap;color:#e6edf3"></div>
+    </div>
     <div id="results"><div class="hint">No run selected. Record, upload, or pick one from history.</div></div>
   </div>
 
@@ -162,7 +188,7 @@
   <div class="box">
     <h2>History</h2>
     <table>
-      <thead><tr><th>run</th><th>source</th><th>duration</th><th>candidates</th><th>status</th></tr></thead>
+      <thead><tr><th>run</th><th>source</th><th>duration</th><th>note</th><th>candidates</th><th>status</th></tr></thead>
       <tbody id="histBody"></tbody>
     </table>
   </div>
@@ -172,6 +198,9 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
+// notes are free text going into innerHTML and a title="" attribute
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const state = {
   phase: "idle",          // idle | armed | recording | processing
   levels: [],             // {t, rms, peak}
@@ -266,6 +295,21 @@ $("btnAll").onclick = () => {
 };
 $("candList").addEventListener("change", syncAllBtn);
 
+$("btnNote").onclick = async () => {
+  if (!state.selectedRun) return;
+  try {
+    await api("/api/runs/" + state.selectedRun + "/note", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: $("runNote").value }),
+    });
+    setStatus("note saved for " + state.selectedRun);
+    loadHistory();
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+};
+
 // ---------------------------------------------------------------- timeline
 const tl = $("timeline"), tctx = tl.getContext("2d");
 const WIN_PX = 3; // px per 20ms window
@@ -311,6 +355,8 @@ function handleEvent(ev) {
       setPhase("armed", "ringing " + ev.number + "…"); setStatus("pick up the call");
     }
     if (ev.state === "call_failed") { callFailure = ev.error; stopSession(); }
+    // track exists but not answered yet — recording is deliberately held back
+    if (ev.state === "ringing") { setPhase("armed", "ringing…"); setStatus("still ringing — pick up"); }
     if (ev.state === "web_ready") { $("pillRoom").textContent = "room: " + ev.room; }
     if (ev.state === "recording") { setPhase("recording"); recT0 = Date.now(); setStatus("recording subscriber"); }
     // hung up = pressed Stop: finalize through the same path so NC still runs
@@ -353,6 +399,7 @@ $("btnStart").onclick = async () => {
       fd.append("file", f);
       fd.append("candidates", JSON.stringify(cands));
       fd.append("script", $("script").value);
+      fd.append("note", $("note").value);
       const res = await api("/api/upload", { method: "POST", body: fd });
       $("resRun").textContent = "— " + res.run_id;
       return;
@@ -360,7 +407,8 @@ $("btnStart").onclick = async () => {
     const res = await api("/api/session/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, candidates: cands, script: $("script").value }),
+      body: JSON.stringify({ source, candidates: cands,
+        script: $("script").value, note: $("note").value }),
     });
     if (source === "web") {
       setPhase("armed", "joining room…");
@@ -567,6 +615,9 @@ async function loadRun(runId) {
   const meta = await api("/api/runs/" + runId);
   state.selectedRun = runId;
   $("resRun").textContent = "— " + runId + " (" + meta.source + ", " + meta.status + ")";
+  $("noteEdit").style.display = "flex";
+  $("runNote").value = meta.note || "";
+  showScriptUsed(meta.script);
   $("results").innerHTML = "";
   for (const e of meta.candidates || []) renderCandidateCard(runId, e);
   renderInputCard(runId, meta);
@@ -622,17 +673,56 @@ function renderRankings(runId, meta) {
         const col = Math.abs(d) < 1e-9 ? "#6e7681" : good ? "#4ec9b0" : "#e06c75";
         delta = `<span style="color:${col}">${d >= 0 ? "+" : "−"}${cat.fmt(Math.abs(d))}</span>`;
       }
-      const mark = r.id === "none" ? ' style="color:#6e7681"' : "";
-      return `<tr><td style="color:#6e7681">${i + 1}</td>` +
-        `<td${mark} style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${r.id}</td>` +
+      const col2 = r.id === "none" ? "#6e7681" : "#58a6ff";
+      return `<tr class="rank" data-cand="${esc(r.id)}" title="jump to ${esc(r.id)}">` +
+        `<td style="color:#6e7681">${i + 1}</td>` +
+        `<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;color:${col2}">${esc(r.id)}</td>` +
         `<td style="text-align:right">${cat.fmt(r.v)}</td>` +
         `<td style="text-align:right">${delta}</td></tr>`;
     }).join("");
     box.innerHTML = html + "</table>";
+    // click a ranked model -> scroll to its card (and its audio player)
+    box.querySelectorAll("tr.rank").forEach((tr) => {
+      tr.onclick = () => jumpToCandidate(tr.dataset.cand);
+    });
     wrap.appendChild(box);
   }
   if (!any) { div.className = "hint"; div.textContent = "Nothing scored in this run yet."; return; }
   div.appendChild(wrap);
+}
+
+// The rankings sit below the results, so a ranked row is usually far from the
+// card it names — scroll to it and flash it, otherwise you land on a wall of
+// near-identical cards with no idea which one you asked for.
+function showScriptUsed(script) {
+  const s = (script || "").trim();
+  $("scriptUsed").style.display = "";
+  const words = s ? s.split(/\s+/).length : 0;
+  if (s) {
+    // one word is 100/words percent of WER — the single most useful number for
+    // deciding whether a WER gap between two candidates means anything
+    $("scriptUsedWords").textContent =
+      `· ${words} words, so one word = ${(100 / words).toFixed(1)}% WER`;
+    $("scriptUsedWords").style.color = "#6e7681";
+    $("scriptUsedText").textContent = s;
+  } else {
+    $("scriptUsedWords").textContent = "";
+    $("scriptUsedText").textContent =
+      "(none set for this run — candidates have no WER, only transcripts)";
+    $("scriptUsedText").style.color = "#6e7681";
+    return;
+  }
+  $("scriptUsedText").style.color = "#e6edf3";
+}
+
+function jumpToCandidate(cid) {
+  const card = $("card-" + cid);
+  if (!card) { setStatus("no card for " + cid + " in this run", true); return; }
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.style.transition = "outline-color .25s";
+  card.style.outline = "2px solid #58a6ff";
+  setTimeout(() => { card.style.outlineColor = "transparent"; }, 1200);
+  setTimeout(() => { card.style.outline = ""; }, 1600);
 }
 
 // ---------------------------------------------------------------- history
@@ -646,7 +736,9 @@ async function loadHistory() {
     const dur = r.input && r.input.duration_s != null ? r.input.duration_s + "s" : "—";
     const cands = (r.candidates || []).map((c) => c.id).join(", ") || "—";
     tr.innerHTML = `<td>${r.id}</td><td>${r.source}</td><td>${dur}</td>
-      <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis">${cands}</td><td>${r.status}</td>`;
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;color:#9aa7b4"
+          title="${esc(r.note || "")}">${esc(r.note || "—")}</td>
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${cands}</td><td>${r.status}</td>`;
     tr.onclick = () => loadRun(r.id);
     tb.appendChild(tr);
   }

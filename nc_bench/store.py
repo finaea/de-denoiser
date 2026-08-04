@@ -10,7 +10,7 @@ from pathlib import Path
 from . import config
 
 
-def new_run(source: str) -> tuple[str, Path]:
+def new_run(source: str, note: str = "") -> tuple[str, Path]:
     run_id = time.strftime("%Y%m%d-%H%M%S")
     run_dir = config.RUNS_DIR / run_id
     # avoid collision if two runs start within a second
@@ -24,6 +24,11 @@ def new_run(source: str) -> tuple[str, Path]:
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "source": source,
         "status": "recording",
+        # free-text conditions for this run ("someone talking beside me",
+        # "speakerphone at arm's length"). Deliberately NOT part of `script`,
+        # which is the WER reference — describing the room in there would be
+        # scored as words the speaker failed to say.
+        "note": note,
         "input": None,
         "candidates": [],
     }

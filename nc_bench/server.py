@@ -147,7 +147,7 @@ async def session_start(body: dict):
     async with _session_lock:
         if _session is not None:
             raise HTTPException(409, "a session is already active")
-        run_id, run_dir = store.new_run(source)
+        run_id, run_dir = store.new_run(source, (body.get("note") or "").strip())
         recorder = Recorder(emit=broadcast, live_candidates=live_cands)
         _session = {
             "run_id": run_id,
@@ -183,7 +183,11 @@ async def session_stop():
 
     if input_meta["file"] is None or input_meta.get("silent"):
         detail = (
-            "no audio was recorded (no call arrived / no mic frames)"
+            # the SIP reason when there is one — "no call arrived" is useless next
+            # to "the trunk rejected the number"
+            (f"the outbound call never connected — {input_meta['dial_error']}"
+             if input_meta.get("dial_error")
+             else "no audio was recorded (no call arrived / no mic frames)")
             if input_meta["file"] is None
             else (
                 f"recorded {input_meta['duration_s']}s at {input_meta.get('level_dbfs')} dBFS "
@@ -206,12 +210,32 @@ async def session_stop():
     return {"run_id": sess["run_id"], "status": "processing"}
 
 
+@app.post("/api/runs/{run_id}/note")
+async def set_note(run_id: str, body: dict):
+    """Annotate a finished run.
+
+    What made a run interesting is usually only clear after reading its results,
+    and the runs already on disk were recorded before notes existed — so the note
+    has to be editable, not just captured at Start.
+    """
+    try:
+        meta = store.load_meta(run_id)
+    except (KeyError, FileNotFoundError):
+        raise HTTPException(404, f"unknown run: {run_id}") from None
+    meta["note"] = (body.get("note") or "").strip()
+    store.save_meta(run_id, meta)
+    return {"run_id": run_id, "note": meta["note"]}
+
+
 # ----------------------------------------------------------------- upload
 
 
 @app.post("/api/upload")
 async def upload(
-    file: UploadFile = File(...), candidates: str = Form(...), script: str = Form("")
+    file: UploadFile = File(...),
+    candidates: str = Form(...),
+    script: str = Form(""),
+    note: str = Form(""),
 ):
     candidate_ids = json.loads(candidates)
     if not candidate_ids:
@@ -223,7 +247,7 @@ async def upload(
     if _session is not None:
         raise HTTPException(409, "a live session is active; stop it first")
 
-    run_id, run_dir = store.new_run("upload")
+    run_id, run_dir = store.new_run("upload", note.strip())
     suffix = Path(file.filename or "audio").suffix or ".bin"
     original = run_dir / f"original{suffix}"
     original.write_bytes(await file.read())

@@ -31,6 +31,7 @@ RMS/peak events to the UI websocket.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 import uuid
@@ -48,6 +49,8 @@ from . import config, lk_cloud
 RECORD_RATE = 48_000
 _LEVEL_WINDOW = int(RECORD_RATE * 0.02)  # 20 ms
 AGENT_NAME = config.LK_AGENT_NAME
+
+log = logging.getLogger("nc_bench.recorder")
 
 EventCb = Callable[[dict], Awaitable[None]]
 
@@ -88,11 +91,18 @@ class _Bridge:
         self.target_identity: str | None = None
         self.live: list[dict] = []
         self.stop_flag = threading.Event()
+        # The far end has picked up, so recording may begin. A SIP participant
+        # joins the room while the phone is still RINGING and can publish early
+        # media (ringback), so subscribing to its track is not proof of an answer
+        # — without this gate the recording opens with the ring tone.
+        self.answered = threading.Event()
         self.finished = threading.Event()
         self.raw: list[np.ndarray] = []
         self.live_bufs: dict[str, list[np.ndarray]] = {}
         self.live_errors: dict[str, str] = {}
         self.diag: dict = {}  # room / participant / SIP attributes of what we recorded
+        # why the outbound call never produced audio; only this knows the SIP reason
+        self.dial_error: str | None = None
 
     def emit_threadsafe(self, ev: dict) -> None:
         if self.emit is not None and self.main_loop is not None:
@@ -148,12 +158,22 @@ async def _entrypoint(ctx) -> None:
     def on_track(track, pub, participant):
         consider(track, participant)
 
+    @ctx.room.on("participant_attributes_changed")
+    def on_attrs(changed, participant):
+        # sip.callStatus walks dialing -> ringing -> active; logged only, since
+        # the answer gate uses the API's own 200 OK rather than these strings.
+        if "sip.callStatus" in (changed or {}):
+            log.info("%s sip.callStatus=%s", participant.identity,
+                     changed["sip.callStatus"])
+            _note("sip status", status=changed["sip.callStatus"])
+
     @ctx.room.on("participant_disconnected")
     def on_left(participant):
         # The callee hung up. Stop exactly as if Stop had been pressed, so the
         # buffers are drained and the UI's stop call finalizes the run normally.
         if participant.identity == b.target_identity:
             _note("hung up", room=room, participant=participant.identity)
+            log.info("%s left the room — ending the recording", participant.identity)
             b.emit_threadsafe({"type": "session", "state": "call_ended"})
             b.stop_flag.set()
 
@@ -169,6 +189,19 @@ async def _entrypoint(ctx) -> None:
             return
         await asyncio.sleep(0.1)
     track, ident = track_fut.result()
+
+    # ...then wait for the answer before opening a stream on it. The track can
+    # exist while the phone is still ringing; b.answered is set by the dial task
+    # the instant create_sip_participant returns (wait_until_answered=True makes
+    # that the 200 OK), and pre-set for web where there is nothing to answer.
+    if not b.answered.is_set():
+        b.emit_threadsafe({"type": "session", "state": "ringing", "participant": ident})
+        log.info("%s published a track but has not answered yet — holding", ident)
+        while not b.answered.is_set():
+            if b.stop_flag.is_set():
+                b.finished.set()
+                return
+            await asyncio.sleep(0.05)
 
     b.emit_threadsafe({"type": "session", "state": "recording", "room": ctx.room.name,
                        "participant": ident})
@@ -395,6 +428,7 @@ class Recorder:
         identity = "nc-web-user"
         _bridge.target_room = self.room_name
         _bridge.target_identity = identity
+        _bridge.answered.set()  # a browser mic has nothing to pick up
         _bridge.armed = True
         lk = self._api()
         await lk.room.create_room(api.CreateRoomRequest(name=self.room_name))
@@ -431,6 +465,11 @@ class Recorder:
                           "room": self.room_name, "number": config.LK_SIP_CALL_TO})
 
         async def dial():
+            log.info(
+                "dialing %s via trunk %s into %s (ringing timeout %ss)",
+                config.LK_SIP_CALL_TO, config.LK_SIP_TRUNK_ID, self.room_name,
+                config.LK_SIP_RINGING_TIMEOUT_S,
+            )
             try:
                 await lk.sip.create_sip_participant(
                     api.CreateSIPParticipantRequest(
@@ -450,10 +489,24 @@ class Recorder:
                         krisp_enabled=False,
                     )
                 )
+                # wait_until_answered=True means we are past the 200 OK: the far
+                # end has actually picked up, so the job may start recording.
+                _bridge.answered.set()
+                _note("answered", room=self.room_name)
+                log.info("call answered by %s — recording starts now", identity)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                await self._emit({"type": "session", "state": "call_failed", "error": str(e)})
+                # The SIP reason (rejected number, unauthorized destination, no
+                # answer) lives ONLY here — LiveKit Cloud does the signalling, so
+                # this HTTP error is the single place it surfaces. Log it, keep it
+                # for the run record, and show it in the UI; a bare emit meant the
+                # terminal showed nothing at all.
+                detail = f"{type(e).__name__}: {e}"
+                _bridge.dial_error = detail
+                _note("dial failed", room=self.room_name, error=detail)
+                log.error("outbound dial to %s failed — %s", config.LK_SIP_CALL_TO, detail)
+                await self._emit({"type": "session", "state": "call_failed", "error": detail})
 
         # Backgrounded: wait_until_answered holds the request open for the whole
         # ring, and the UI needs to come back and show "dialing" immediately.
@@ -523,7 +576,7 @@ class Recorder:
 
         if not _bridge.raw:
             return {"file": None, "duration_s": 0.0, "sample_rate": RECORD_RATE,
-                    "diag": _bridge.diag}, live
+                    "diag": _bridge.diag, "dial_error": _bridge.dial_error}, live
         audio = np.concatenate(_bridge.raw)
         sf.write(out_wav, audio, RECORD_RATE)
         # A leg that was up but carried no audio: bit-exact zeros when no media
