@@ -62,7 +62,8 @@
   canvas.timeline { width: 100%; height: 140px; display: block; background: #010409;
                     border: 1px solid #30363d; border-radius: 8px; }
   canvas.wave { width: 100%; height: 64px; display: block; background: #010409;
-                border: 1px solid #21262d; border-radius: 6px; }
+                border: 1px solid #21262d; border-radius: 6px; cursor: pointer; }
+  canvas.wave:hover { border-color: #58a6ff; }
 
   .cand-card { background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
                padding: 10px 12px; margin-top: 10px; }
@@ -174,7 +175,9 @@
           border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace"></select>
       </span></h2>
     <canvas id="timeline" class="timeline" width="1600" height="280"></canvas>
-    <div class="hint" id="tlHint">Live RMS of the subscribed track (20 ms windows).</div>
+    <div class="hint" id="tlHint">Live RMS of the subscribed track (20 ms windows).
+      Scale/height apply to every waveform below too — <b>click any of them to play
+      from that point</b>; an orange playhead tracks it.</div>
   </div>
 
   <div class="box">
@@ -228,6 +231,7 @@ const state = {
   waveHeightSel: "1",     // "1"|"2"|"4"|"6"|"fit" — taller canvas = headroom
                           // before linear gain clips; see effMul()
   wavePeaks: {},          // canvasId -> {mins, maxs}, so rescaling never refetches
+  fitCache: null,         // memoised effMul() for "fit"; null = recompute
 };
 
 // ---------------------------------------------------------------- helpers
@@ -360,6 +364,9 @@ const REF_HALF_TL = 70;     // default timeline: 140 css px tall
 function effMul() {
   if (state.waveHeightSel !== "fit") return +state.waveHeightSel || 1;
   if (state.waveScale === "db") return 1;  // dB cannot clip
+  // Cached: the playhead loop repaints at 60 fps and this scans every peak
+  // array. Invalidated wherever the scale, the height or the peaks change.
+  if (state.fitCache != null) return state.fitCache;
   const g = +state.waveScale || 1;
   let unit = 0;  // needed height as a multiple of the DEFAULT half-height
   for (const p of Object.values(state.wavePeaks)) {
@@ -368,7 +375,8 @@ function effMul() {
     }
   }
   for (const l of state.levels) unit = Math.max(unit, (l.rms / 32768) * 6 * g);
-  return Math.min(FIT_MAX_MUL, Math.max(1, Math.ceil(unit)));
+  state.fitCache = Math.min(FIT_MAX_MUL, Math.max(1, Math.ceil(unit)));
+  return state.fitCache;
 }
 
 // amplitude in [0,1] -> pixels from the centre line, before any clipping.
@@ -446,6 +454,7 @@ function connectWS() {
 function handleEvent(ev) {
   if (ev.type === "level") {
     state.levels.push(ev);
+    if (state.waveHeightSel === "fit") state.fitCache = null;
     return;
   }
   if (ev.type === "session") {
@@ -593,6 +602,27 @@ function prepareResultsSkeleton(runId, candIds) {
   }
 }
 
+// Re-transcribes from the wav already on disk — no NC re-run, so it is cheap and
+// the audio being compared cannot change underneath the other scores.
+const sttBtn = (cid) =>
+  `<button class="mini" data-stt="${esc(cid)}" style="margin-left:6px">↻ stt</button>`;
+
+document.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest && ev.target.closest("button[data-stt]");
+  if (!btn || !state.selectedRun) return;
+  const cid = btn.dataset.stt;
+  btn.disabled = true; btn.textContent = "↻ …";
+  try {
+    // the server broadcasts the updated entry, which re-renders this card
+    await api(`/api/runs/${state.selectedRun}/candidates/${encodeURIComponent(cid)}/stt`,
+              { method: "POST" });
+    setStatus("re-transcribed " + cid);
+  } catch (err) {
+    setStatus(`stt rerun failed for ${cid}: ${err.message}`, true);
+    btn.disabled = false; btn.textContent = "↻ stt";
+  }
+});
+
 function renderCandidateCard(runId, e) {
   let card = $("card-" + e.id);
   if (!card) {
@@ -614,9 +644,12 @@ function renderCandidateCard(runId, e) {
     if (e.stt) {
       const t = e.stt.text || "";
       html += `<div class="stt ${t ? "" : "empty"}">${t || "(empty transcript)"}</div>
-        <div class="meta">lang: ${e.stt.language ?? "—"} · confidence: ${e.stt.confidence ?? "—"}</div>`;
+        <div class="meta">lang: ${e.stt.language ?? "—"} · confidence: ${e.stt.confidence ?? "—"}
+        ${e.output ? sttBtn(e.id) : ""}</div>`;
     } else if (e.stt_error) {
-      html += `<div class="err">STT failed: ${e.stt_error}</div>`;
+      html += `<div class="err">STT failed: ${e.stt_error} ${e.output ? sttBtn(e.id) : ""}</div>`;
+    } else if (e.output) {
+      html += `<div class="meta">no transcript ${sttBtn(e.id)}</div>`;
     }
     if (e.scores) {
       const s = e.scores, d = s.dnsmos || {};
@@ -636,7 +669,7 @@ function renderCandidateCard(runId, e) {
     }
     if (e.output) {
       html += `<canvas class="wave" width="1600" height="128" id="wave-${e.id}"></canvas>
-        <audio controls preload="none" src="${fileUrl(e.output)}"></audio>
+        <audio controls preload="metadata" src="${fileUrl(e.output)}"></audio>
         <div class="dl"><a href="${fileUrl(e.output)}" download="${runId}-${e.id}.wav">⬇ download ${e.output}</a></div>`;
     }
   }
@@ -682,7 +715,7 @@ function renderInputCard(runId, meta) {
       ${meta.input.original_name ? " · " + meta.input.original_name : ""}</span></div>
     ${inScores}
     <canvas class="wave" width="1600" height="128" id="wave-input"></canvas>
-    <audio controls preload="none" src="${url}"></audio>
+    <audio controls preload="metadata" src="${url}"></audio>
     <div class="dl"><a href="${url}" download="${runId}-input.wav">⬇ download input.wav</a></div>`;
   div.prepend(card);
   drawWave(url, "wave-input");
@@ -708,6 +741,7 @@ async function drawWave(url, canvasId) {
       mins[x] = min; maxs[x] = max;
     }
     state.wavePeaks[canvasId] = { mins, maxs };
+    state.fitCache = null;  // a new peak set can change the fit height
     actx.close();
     paintWave(canvasId);
   } catch { /* wave render is cosmetic */ }
@@ -743,12 +777,72 @@ function paintWave(canvasId) {
   }
   ctx.fillStyle = "#6e7681"; ctx.font = "16px ui-monospace";
   ctx.fillText(scaleCaption(clipped, mul), 8, 18);
+
+  // playhead, so you can see which part of the waveform you are hearing
+  const audio = waveAudio(cv);
+  if (audio && audio.duration > 0 && isFinite(audio.duration) && audio.currentTime > 0) {
+    const x = (audio.currentTime / audio.duration) * W;
+    ctx.fillStyle = audio.paused ? "#9aa7b4" : "#f0883e";
+    ctx.fillRect(Math.min(x, W - 3), 0, 3, H);
+  }
 }
 
 function repaintAllWaves() {
+  state.fitCache = null;
   Object.keys(state.wavePeaks).forEach(paintWave);
   drawTimeline();
 }
+
+// ------------------------------------------------------- wave click / play
+// function, not const: paintWave above calls it, and a const would be in its
+// temporal dead zone if anything ever painted during script evaluation
+function waveAudio(cv) {
+  return cv.parentElement && cv.parentElement.querySelector("audio");
+}
+
+// Setting currentTime before metadata exists is silently dropped, so the seek may
+// have to wait for loadedmetadata (preload="metadata" makes that the rare case).
+// play() stays SYNCHRONOUS in the click handler either way — called from the
+// async callback instead, it has lost the user gesture and Safari refuses it.
+function seekAndPlay(audio, frac) {
+  const ready = isFinite(audio.duration) && audio.duration > 0;
+  const seek = () => {
+    if (isFinite(audio.duration) && audio.duration > 0) {
+      audio.currentTime = frac * audio.duration;
+    }
+  };
+  if (ready) seek();
+  else audio.addEventListener("loadedmetadata", seek, { once: true });
+  audio.play().catch(() => {});  // also kicks off loading when preload deferred
+}
+
+document.addEventListener("click", (ev) => {
+  const cv = ev.target.closest && ev.target.closest("canvas.wave");
+  if (!cv) return;
+  const audio = waveAudio(cv);
+  if (!audio) return;
+  const r = cv.getBoundingClientRect();
+  seekAndPlay(audio, Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
+});
+
+// One rAF loop for whatever is playing, started by the (non-bubbling, hence
+// captured) play event and self-terminating so it costs nothing when idle.
+let playRaf = null;
+function playheadLoop() {
+  let any = false;
+  document.querySelectorAll("canvas.wave").forEach((cv) => {
+    const a = waveAudio(cv);
+    if (a && !a.paused && !a.ended) { paintWave(cv.id); any = true; }
+  });
+  playRaf = any ? requestAnimationFrame(playheadLoop) : null;
+}
+document.addEventListener("play", () => { if (!playRaf) playheadLoop(); }, true);
+// settle the line where playback stopped / was scrubbed
+["pause", "ended", "seeked"].forEach((evt) =>
+  document.addEventListener(evt, (ev) => {
+    const cv = ev.target.parentElement && ev.target.parentElement.querySelector("canvas.wave");
+    if (cv) paintWave(cv.id);
+  }, true));
 
 async function loadRun(runId) {
   const meta = await api("/api/runs/" + runId);
@@ -757,7 +851,8 @@ async function loadRun(runId) {
   $("noteEdit").style.display = "flex";
   $("runNote").value = meta.note || "";
   showScriptUsed(meta.script);
-  state.wavePeaks = {};  // canvases are about to be replaced; stale peaks would
+  state.wavePeaks = {}; state.fitCache = null;
+                         // canvases are about to be replaced; stale peaks would
                          // repaint onto whatever canvas reuses the id
   $("results").innerHTML = "";
   for (const e of meta.candidates || []) renderCandidateCard(runId, e);

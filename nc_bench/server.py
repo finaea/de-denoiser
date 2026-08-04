@@ -246,6 +246,48 @@ async def set_note(run_id: str, body: dict):
     return {"run_id": run_id, "note": meta["note"]}
 
 
+@app.post("/api/runs/{run_id}/candidates/{cid}/stt")
+async def rerun_stt(run_id: str, cid: str):
+    """Re-transcribe one candidate from the audio already on disk.
+
+    The NC chain is not re-run — the output wav is untouched — so only the
+    transcript and the WER derived from it change. DNSMOS, band and gap-RMS are
+    deliberately left alone: recomputing them here would be wasted work and would
+    silently re-measure this one candidate under different conditions than the
+    rest of its run.
+    """
+    try:
+        meta = store.load_meta(run_id)
+        run_dir = store.run_dir(run_id)
+    except (KeyError, FileNotFoundError):
+        raise HTTPException(404, f"unknown run: {run_id}") from None
+
+    entry = next((e for e in meta.get("candidates") or [] if e.get("id") == cid), None)
+    if entry is None:
+        raise HTTPException(404, f"{cid} is not in run {run_id}")
+    out_wav = run_dir / (entry.get("output") or "")
+    if not entry.get("output") or not out_wav.is_file():
+        raise HTTPException(409, f"{cid} has no output audio to transcribe")
+
+    try:
+        entry["stt"] = await stt.transcribe(out_wav)
+        entry.pop("stt_error", None)
+    except Exception as e:
+        entry.pop("stt", None)
+        entry["stt_error"] = str(e)
+
+    script = (meta.get("script") or "").strip()
+    if script and isinstance(entry.get("scores"), dict):
+        # WER is a function of the transcript, so it has to move with it
+        entry["scores"]["wer"] = scoring.wer(
+            script, (entry.get("stt") or {}).get("text", "")
+        )
+    store.save_meta(run_id, meta)
+    await broadcast({"type": "progress", "run_id": run_id, "candidate": cid,
+                     "stage": entry.get("status", "done"), "entry": entry})
+    return entry
+
+
 # ----------------------------------------------------------------- upload
 
 
