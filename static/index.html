@@ -56,6 +56,9 @@
   .field label { font-size: 11px; color: #9aa7b4; }
   input[type=file] { font-size: 11px; color: #9aa7b4; }
 
+  /* these heights are the 1x defaults, in effect until sizeCanvas() sets an
+     inline height (which outranks a class rule) from the height multiplier.
+     Keep them in sync with REF_HALF_TL / REF_HALF_WAVE x2. */
   canvas.timeline { width: 100%; height: 140px; display: block; background: #010409;
                     border: 1px solid #30363d; border-radius: 8px; }
   canvas.wave { width: 100%; height: 64px; display: block; background: #010409;
@@ -161,7 +164,15 @@
 
 <main>
   <div class="box">
-    <h2>Subscriber timeline</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between">Subscriber timeline
+      <span style="text-transform:none;letter-spacing:0;font-weight:400">
+        <label for="waveScale" style="color:#6e7681">wave scale</label>
+        <select id="waveScale" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+          border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace"></select>
+        <label for="waveHeight" style="color:#6e7681;margin-left:8px">height</label>
+        <select id="waveHeight" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+          border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace"></select>
+      </span></h2>
     <canvas id="timeline" class="timeline" width="1600" height="280"></canvas>
     <div class="hint" id="tlHint">Live RMS of the subscribed track (20 ms windows).</div>
   </div>
@@ -213,6 +224,10 @@ const state = {
   lkRoom: null,           // livekit-client Room (web mode)
   selectedRun: null,
   candidates: [],
+  waveScale: "1",         // "1"|"4"|"16"|"64" linear gain, or "db"
+  waveHeightSel: "1",     // "1"|"2"|"4"|"6"|"fit" — taller canvas = headroom
+                          // before linear gain clips; see effMul()
+  wavePeaks: {},          // canvasId -> {mins, maxs}, so rescaling never refetches
 };
 
 // ---------------------------------------------------------------- helpers
@@ -319,21 +334,99 @@ $("btnNote").onclick = async () => {
 // ---------------------------------------------------------------- timeline
 const tl = $("timeline"), tctx = tl.getContext("2d");
 const WIN_PX = 3; // px per 20ms window
+// Residual noise is the whole point of the comparison and it is invisible on a
+// linear waveform: -60 dBFS is 0.001 of full scale, i.e. sub-pixel. Linear gain
+// makes it visible but clips speech to a solid block; the dB mode compresses
+// loud and expands quiet so both are readable at once.
+const WAVE_SCALES = [
+  { v: "1", label: "1x" }, { v: "4", label: "4x" },
+  { v: "16", label: "16x" }, { v: "64", label: "64x" },
+  { v: "db", label: "dB" },
+];
+const DB_FLOOR = -72;
+// Height multipliers. Gain is deliberately measured in PIXELS against the
+// default half-height below, not as a fraction of the canvas — that is what
+// makes a taller box actually buy headroom instead of just magnifying the same
+// clipped picture.
+const HEIGHT_MULS = ["1", "2", "4", "6", "fit"];
+const FIT_MAX_MUL = 24;
+const REF_HALF_WAVE = 32;   // default candidate wave: 64 css px tall
+const REF_HALF_TL = 70;     // default timeline: 140 css px tall
+
+// The active multiplier. "fit" derives it from the loudest sample actually on
+// screen so nothing is ever cut off — one value for every canvas, because a
+// per-canvas height would make the candidates incomparable, which is the only
+// reason to look at them side by side.
+function effMul() {
+  if (state.waveHeightSel !== "fit") return +state.waveHeightSel || 1;
+  if (state.waveScale === "db") return 1;  // dB cannot clip
+  const g = +state.waveScale || 1;
+  let unit = 0;  // needed height as a multiple of the DEFAULT half-height
+  for (const p of Object.values(state.wavePeaks)) {
+    for (let i = 0; i < p.maxs.length; i++) {
+      unit = Math.max(unit, Math.abs(p.maxs[i]) * g, Math.abs(p.mins[i]) * g);
+    }
+  }
+  for (const l of state.levels) unit = Math.max(unit, (l.rms / 32768) * 6 * g);
+  return Math.min(FIT_MAX_MUL, Math.max(1, Math.ceil(unit)));
+}
+
+// amplitude in [0,1] -> pixels from the centre line, before any clipping.
+// `mul` is passed in, not read via effMul(): this runs per pixel, and effMul()
+// scans every cached peak array in fit mode.
+function waveGainPx(a, refHalf, mul, preGain = 1) {
+  const m = Math.abs(a);
+  if (state.waveScale === "db") {
+    const db = 20 * Math.log10(Math.max(m, 1e-9));
+    // dB uses the whole available height and cannot clip: 0 dBFS = the edge
+    return Math.max(0, Math.min(1, (db - DB_FLOOR) / -DB_FLOOR)) * refHalf * mul;
+  }
+  return m * preGain * (+state.waveScale || 1) * refHalf;
+}
+
+// Resize a canvas to the chosen multiplier. Writing .height clears it, so every
+// caller repaints straight after.
+function sizeCanvas(cv, baseCss, mul) {
+  const css = baseCss * mul;
+  if (cv.height !== css * 2) cv.height = css * 2;  // 2x backing store, stays crisp
+  cv.style.height = css + "px";
+  return cv.height;
+}
+
 function drawTimeline() {
-  const W = tl.width, H = tl.height;
+  const mul = effMul();
+  sizeCanvas(tl, REF_HALF_TL, mul);
+  const W = tl.width, H = tl.height, mid = H / 2;
   tctx.fillStyle = "#010409"; tctx.fillRect(0, 0, W, H);
   const n = Math.floor(W / WIN_PX);
   const win = state.levels.slice(-n);
-  tctx.fillStyle = "#3fb950";
+  let clipped = 0;
   win.forEach((l, i) => {
-    const h = Math.max(1, (l.rms / 32768) * H * 6);
-    tctx.fillRect(i * WIN_PX, (H - Math.min(h, H)) / 2, WIN_PX - 1, Math.min(h, H));
+    // x6 pre-gain keeps "1x" at 1x height identical to the original view
+    const px = waveGainPx(l.rms / 32768, REF_HALF_TL, mul, 6) * 2;  // backing store is 2x
+    const h = Math.max(1, Math.min(px, mid));
+    if (px > mid) clipped++;
+    tctx.fillStyle = px > mid ? "#f85149" : "#3fb950";
+    tctx.fillRect(i * WIN_PX, mid - h, WIN_PX - 1, h * 2);
   });
   if (win.length) {
     const last = win[win.length - 1];
     tctx.fillStyle = "#9aa7b4"; tctx.font = "20px ui-monospace";
-    tctx.fillText(`t=${last.t.toFixed(1)}s  rms=${last.rms}`, 10, 24);
+    const db = 20 * Math.log10(Math.max(last.rms / 32768, 1e-9));
+    tctx.fillText(`t=${last.t.toFixed(1)}s  rms=${last.rms} (${db.toFixed(1)} dBFS)`, 10, 24);
   }
+  tctx.fillStyle = "#6e7681"; tctx.font = "16px ui-monospace";
+  tctx.fillText(scaleCaption(clipped, mul), 10, H - 8);
+}
+
+// Clipping is called out rather than left to look like a loud passage — and the
+// caption says the cure, since taller is what actually fixes it.
+function scaleCaption(clipped, mul) {
+  const m = mul;
+  const h = m > 1 ? `, height ${m}x${state.waveHeightSel === "fit" ? " (fit)" : ""}` : "";
+  if (state.waveScale === "db") return `dB scale, floor ${DB_FLOOR} dBFS${h}`;
+  const clip = clipped ? ` — ${clipped} cols CLIPPED (raise height)` : "";
+  return `linear ${state.waveScale}x${h}${clip}`;
 }
 setInterval(() => { if (state.phase === "recording") drawTimeline(); }, 100);
 
@@ -595,28 +688,66 @@ function renderInputCard(runId, meta) {
   drawWave(url, "wave-input");
 }
 
+// Peaks are cached per canvas so changing the scale repaints instantly instead of
+// re-fetching and re-decoding 35 wavs.
 async function drawWave(url, canvasId) {
   try {
+    const cv = $(canvasId); if (!cv) return;
     const buf = await (await fetch(url)).arrayBuffer();
     const actx = new (window.AudioContext || window.webkitAudioContext)();
     const audio = await actx.decodeAudioData(buf);
     const data = audio.getChannelData(0);
-    const cv = $(canvasId); if (!cv) return;
-    const ctx = cv.getContext("2d");
-    const W = cv.width, H = cv.height, step = Math.ceil(data.length / W);
-    ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "#58a6ff";
+    const W = cv.width, step = Math.ceil(data.length / W);
+    const mins = new Float32Array(W), maxs = new Float32Array(W);
     for (let x = 0; x < W; x++) {
       let min = 1, max = -1;
       for (let i = x * step; i < (x + 1) * step && i < data.length; i++) {
         if (data[i] < min) min = data[i];
         if (data[i] > max) max = data[i];
       }
-      const y1 = ((1 - max) / 2) * H, y2 = ((1 - min) / 2) * H;
-      ctx.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+      mins[x] = min; maxs[x] = max;
     }
+    state.wavePeaks[canvasId] = { mins, maxs };
     actx.close();
+    paintWave(canvasId);
   } catch { /* wave render is cosmetic */ }
+}
+
+function paintWave(canvasId) {
+  const peaks = state.wavePeaks[canvasId];
+  const cv = $(canvasId);
+  if (!peaks || !cv) return;
+  const mul = effMul();
+  sizeCanvas(cv, REF_HALF_WAVE, mul);
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height, mid = H / 2;
+  ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, W, H);
+  // in dB mode the sign is meaningless (log of |a|), so draw a symmetric
+  // envelope rather than pretending the shape above/below zero survived
+  const db = state.waveScale === "db";
+  let clipped = 0;
+  for (let x = 0; x < W; x++) {
+    let up, dn;
+    if (db) {
+      up = dn = waveGainPx(Math.max(Math.abs(peaks.mins[x]), Math.abs(peaks.maxs[x])),
+                           REF_HALF_WAVE, mul) * 2;
+    } else {
+      up = waveGainPx(peaks.maxs[x], REF_HALF_WAVE, mul) * 2;
+      dn = waveGainPx(peaks.mins[x], REF_HALF_WAVE, mul) * 2;
+    }
+    const over = up > mid || dn > mid;
+    if (over) clipped++;
+    up = Math.min(up, mid); dn = Math.min(dn, mid);
+    ctx.fillStyle = over ? "#f85149" : "#58a6ff";
+    ctx.fillRect(x, mid - up, 1, Math.max(1, up + dn));
+  }
+  ctx.fillStyle = "#6e7681"; ctx.font = "16px ui-monospace";
+  ctx.fillText(scaleCaption(clipped, mul), 8, 18);
+}
+
+function repaintAllWaves() {
+  Object.keys(state.wavePeaks).forEach(paintWave);
+  drawTimeline();
 }
 
 async function loadRun(runId) {
@@ -626,6 +757,8 @@ async function loadRun(runId) {
   $("noteEdit").style.display = "flex";
   $("runNote").value = meta.note || "";
   showScriptUsed(meta.script);
+  state.wavePeaks = {};  // canvases are about to be replaced; stale peaks would
+                         // repaint onto whatever canvas reuses the id
   $("results").innerHTML = "";
   for (const e of meta.candidates || []) renderCandidateCard(runId, e);
   renderInputCard(runId, meta);
@@ -788,6 +921,16 @@ function concHint() {
       "Quality metrics (DNSMOS, WER, band) are unaffected.";
 }
 $("conc").onchange = concHint;
+
+$("waveScale").innerHTML = WAVE_SCALES.map((s) =>
+  `<option value="${s.v}"${s.v === state.waveScale ? " selected" : ""}>${s.label}</option>`).join("");
+$("waveHeight").innerHTML = HEIGHT_MULS.map((m) =>
+  `<option value="${m}"${m === state.waveHeightSel ? " selected" : ""}>${m === "fit" ? "fit (no clip)" : m + "x"}</option>`).join("");
+$("waveScale").onchange = $("waveHeight").onchange = () => {
+  state.waveScale = $("waveScale").value;
+  state.waveHeightSel = $("waveHeight").value;
+  repaintAllWaves();
+};
 loadCandidates();
 loadHistory();
 setPhase("idle");
