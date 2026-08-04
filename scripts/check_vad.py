@@ -100,14 +100,39 @@ async def main() -> None:
         )
         print("OK   total speech is stable when the same audio is re-positioned")
 
-        # 4. silence alone must produce nothing
+        # 4. audio that ENDS MID-SPEECH must still report that final turn.
+        #    No END_OF_SPEECH ever fires for a turn the recording cuts off, so
+        #    reading only END events drops it — silently, and completely: a 13 s
+        #    web call that is 68% speech by probability reported zero spans.
+        #    Cut 60% of the way into the LONGEST span the VAD itself found, so the
+        #    file provably ends mid-speech — truncating at "the last loud sample"
+        #    is not good enough, that tail can be breath or noise the VAD rightly
+        #    ignores, and the test then passes for the wrong reason.
+        s0, e0 = max(base["segments"], key=lambda se: se[1] - se[0])
+        cut_at = s0 + 0.6 * (e0 - s0)
+        cut = speech[: int(cut_at * rate)]
+        mid = tmp / "cut-mid-speech.wav"
+        sf.write(mid, cut, rate)
+        cm = await vad.analyze(mid)
+        cut_dur = len(cut) / rate
+        print(f"     cut inside a detected span ({s0:.2f}-{e0:.2f}s) at {cut_at:.2f}s")
+        assert cm["n"] > 0, "a file ending mid-speech reported no spans at all"
+        last_end = max(e for _, e in cm["segments"])
+        print(f"     ends mid-speech ({cut_dur:.2f}s, no trailing silence): "
+              f"{cm['n']} spans, last ends {last_end:.2f}s")
+        assert last_end >= cut_dur - 0.25, (
+            f"the final turn was dropped: last span ends {last_end:.2f}s of {cut_dur:.2f}s"
+        )
+        print("OK   the turn a recording cuts off is still reported")
+
+        # 5. silence alone must produce nothing
         quiet = tmp / "quiet.wav"
         sf.write(quiet, np.zeros(int(5 * rate), dtype=np.float32), rate)
         q = await vad.analyze(quiet)
         assert q["n"] == 0, f"found {q['n']} spans in 5 s of digital silence"
         print("OK   5 s of silence yields no spans")
 
-        # 5. stored spans on disk still match a fresh analysis at the SAME params.
+        # 6. stored spans on disk still match a fresh analysis at the SAME params.
         #    Re-derived from what the run actually stored rather than from
         #    defaults(): the rate now follows the run's source, so a phone run's
         #    stored spans are not expected to match the global default.

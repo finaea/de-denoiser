@@ -467,6 +467,7 @@ async def _process_run(
     await asyncio.gather(*(_slot(i, cid) for i, cid in enumerate(candidate_ids)))
 
     meta["candidates"] = [e for e in entries if e is not None]
+    vad.score_run(meta)
     meta["status"] = "done"
     store.save_meta(run_id, meta)
     await broadcast({"type": "run_done", "run_id": run_id})
@@ -486,6 +487,63 @@ async def api_run(run_id: str):
         return store.load_meta(run_id)
     except (KeyError, FileNotFoundError):
         raise HTTPException(404, "run not found")
+
+
+def _merge_spans(spans, limit: float) -> list[list[float]]:
+    """Sorted, clamped, non-overlapping.
+
+    Hand-drawn regions arrive in paint order and overlap freely (you redraw over
+    a region you got slightly wrong). Storing them raw would leave any later
+    interval arithmetic dependent on the order they were painted in.
+    """
+    clean: list[list[float]] = []
+    for pair in spans or []:
+        try:
+            a, b = float(pair[0]), float(pair[1])
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+        lo, hi = (a, b) if a <= b else (b, a)
+        lo, hi = max(0.0, min(lo, limit)), max(0.0, min(hi, limit))
+        if hi - lo >= 0.02:  # a 20 ms drag is a mis-click, not a region
+            clean.append([lo, hi])
+    clean.sort()
+    out: list[list[float]] = []
+    for lo, hi in clean:
+        if out and lo <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], hi)
+        else:
+            out.append([lo, hi])
+    return [[round(a, 3), round(b, 3)] for a, b in out]
+
+
+@app.post("/api/runs/{run_id}/truth")
+async def set_truth(run_id: str, body: dict):
+    """Hand-marked speech regions for one run: the ground truth every candidate's
+    VAD spans are scored against.
+
+    Marked once on the raw input and reused for every candidate, deliberately —
+    the question is "did this chain's audio still let the VAD find MY speech",
+    which needs a reference no chain can influence.
+
+    Only the regions are stored. Scoring is interval arithmetic the page does
+    against VAD spans already in meta, so re-marking re-scores every candidate
+    instantly without re-reading a single wav.
+    """
+    try:
+        meta = store.load_meta(run_id)
+    except (KeyError, FileNotFoundError):
+        raise HTTPException(404, f"unknown run: {run_id}") from None
+    # clamp to the recording, so a drag past the right edge cannot invent speech
+    limit = float((meta.get("input") or {}).get("duration_s") or 0) or 1e9
+    meta["truth_spans"] = _merge_spans(body.get("spans"), limit)
+    vad.score_run(meta)   # marks changed: every candidate's score is now stale
+    store.save_meta(run_id, meta)
+    return {
+        "run_id": run_id,
+        "spans": meta["truth_spans"],
+        "n": len(meta["truth_spans"]),
+        "speech_s": round(sum(b - a for a, b in meta["truth_spans"]), 2),
+    }
 
 
 @app.post("/api/runs/{run_id}/vad")
@@ -538,6 +596,7 @@ async def rerun_vad(run_id: str, body: dict | None = None):
                              "total": len(names)})
 
     meta["vad_params"] = p
+    vad.score_run(meta)   # spans changed: rescore against the existing marks
     store.save_meta(run_id, meta)
     stats = {"run_id": run_id, "files": done, "failed": failed, "params": p}
     await broadcast({"type": "vad", "finished": True, **stats})

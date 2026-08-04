@@ -74,9 +74,9 @@ _cache: dict[tuple, object] = {}
 def defaults(source: str | None = None) -> dict:
     """.env thresholds plus the inference rate implied by `source`.
 
-    Thresholds come from .env (mirroring ai-handler's production config) so the
-    page opens showing what production would do. The rate is not an .env value
-    because a single setting cannot express "8 k for phone, 16 k for a mic".
+    Thresholds come from .env; see config.py for why they sit tighter than
+    ai-handler's. The rate is NOT an .env value because a single setting cannot
+    express "8 k for a phone leg, 16 k for a mic".
     """
     return {
         "activation_threshold": config.VAD_ACTIVATION_THRESHOLD,
@@ -113,6 +113,70 @@ def clean(p: dict | None, source: str | None = None) -> dict:
         except (TypeError, ValueError):
             pass
     return out
+
+
+# --------------------------------------------------- vs hand-marked speech
+
+TRUTH_FRAME = 0.01  # 10 ms
+
+
+def _mask(spans, n: int) -> np.ndarray:
+    m = np.zeros(n, dtype=bool)
+    for s, e in spans or []:
+        a = max(0, int(float(s) / TRUTH_FRAME))
+        b = min(n, int(-(-float(e) // TRUTH_FRAME)))
+        if b > a:
+            m[a:b] = True
+    return m
+
+
+def score_spans(truth, segments, duration_s) -> dict | None:
+    """Frame-level agreement between hand-marked speech and a VAD's spans.
+
+    Masks on 10 ms frames rather than interval algebra: 12 000 frames for a
+    two-minute call costs nothing, and a mask is obviously correct where the
+    merge/clip edge cases of interval arithmetic are exactly where this kind of
+    code goes wrong.
+
+    `agree` is the headline — the share of the call where the VAD and the human
+    say the same thing. The two error terms are kept separate because they mean
+    opposite things: `miss_s` is speech a chain hid from the recogniser, `fa_s` is
+    turns nobody spoke.
+    """
+    if not truth or segments is None or not duration_s:
+        return None
+    n = max(1, round(float(duration_s) / TRUTH_FRAME))
+    t, v = _mask(truth, n), _mask(segments, n)
+    tp = int((t & v).sum())
+    fn = int((t & ~v).sum())
+    fp = int((~t & v).sum())
+    tn = int((~t & ~v).sum())
+    prec = tp / (tp + fp) if tp + fp else 0.0
+    rec = tp / (tp + fn) if tp + fn else 0.0
+    return {
+        "agree": round((tp + tn) / n, 4),
+        "f1": round(2 * prec * rec / (prec + rec), 4) if prec + rec else 0.0,
+        "miss_s": round(fn * TRUTH_FRAME, 2),
+        "fa_s": round(fp * TRUTH_FRAME, 2),
+        "marked_s": round((tp + fn) * TRUTH_FRAME, 2),
+    }
+
+
+def score_run(meta: dict) -> None:
+    """(Re)score every candidate against meta["truth_spans"], in place.
+
+    Has to be called wherever EITHER input changes — the marks or the spans —
+    since a stored score is only meaningful for the pair that produced it.
+    """
+    truth = meta.get("truth_spans") or []
+    dur = float((meta.get("input") or {}).get("duration_s") or 0)
+    if not dur:
+        dur = float((meta.get("input_vad") or {}).get("duration_s") or 0)
+    for c in meta.get("candidates") or []:
+        v = c.get("vad") or {}
+        c["truth_score"] = (
+            None if v.get("error") else score_spans(truth, v.get("segments"), dur)
+        )
 
 
 def _load(p: dict):
@@ -160,11 +224,23 @@ async def analyze(wav, p: dict | None = None, source: str | None = None) -> dict
         stream.end_input()
 
         segments: list[list[float]] = []
+        open_start: float | None = None
         async for ev in stream:
-            if ev.type is agents_vad.VADEventType.END_OF_SPEECH:
+            if ev.type is agents_vad.VADEventType.START_OF_SPEECH:
+                # already min_speech_duration in when it fires, hence the subtraction
+                open_start = max(0.0, float(ev.timestamp) - float(ev.speech_duration))
+            elif ev.type is agents_vad.VADEventType.END_OF_SPEECH:
                 end = float(ev.timestamp) - float(ev.silence_duration)
                 start = max(0.0, end - float(ev.speech_duration))
                 segments.append([round(start, 3), round(min(end, duration_s or end), 3)])
+                open_start = None
+        # A turn still open when the audio ran out: the talker was mid-word when
+        # the recording stopped, so no END_OF_SPEECH ever fires. Reading only END
+        # events silently drops that whole final turn — measured on a 13 s web
+        # call that is 68% speech by probability and reported ZERO spans. Common
+        # enough to matter: you stop the recorder while still talking.
+        if open_start is not None and duration_s > open_start:
+            segments.append([round(open_start, 3), round(duration_s, 3)])
     finally:
         await stream.aclose()
 

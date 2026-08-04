@@ -270,6 +270,9 @@ const state = {
   vadSpans: {},           // canvasId -> {segments, duration_s} drawn under the wave
   vadShow: true,
   runMeta: null,          // the loaded run, for "delta vs no-NC" on each card
+  truth: [],              // hand-marked speech regions [[s,e],…] for this run
+  marking: false,         // drag-to-mark mode on the input waveform
+  drag: null,             // {cv, from, to} while a region is being dragged
 };
 
 // ---------------------------------------------------------------- helpers
@@ -405,8 +408,8 @@ $("btnNote").onclick = async () => {
 const VAD_FIELDS = [
   ["activation_threshold", "activation", "p(speech) that starts a span"],
   ["deactivation_threshold", "deactivation", "p(speech) below which it can end"],
-  ["min_speech_duration", "min speech (s)", "shorter blips are not a turn"],
-  ["min_silence_duration", "min silence (s)", "pause that ends a turn"],
+  ["min_speech_duration", "min speech (s)", "shorter blips are not a turn — ai-handler runs 0.12"],
+  ["min_silence_duration", "min silence (s)", "pause that ends a turn — ai-handler runs 0.55"],
   ["prefix_padding_duration", "prefix pad (s)", "back-dates a span's start"],
 ];
 // The rate is an enum, not a range: silero has real weights for exactly 8 k and
@@ -506,7 +509,8 @@ function showVadBar(meta) {
       notes.push(amber("thresholds differ from .env, so these spans are NOT comparable "
         + "with a run measured at the defaults"));
     }
-    if (!notes.length) notes.push(grey("the ai-handler production defaults for this source"));
+    if (!notes.length) notes.push(grey("the nc_bench defaults for this source (tighter "
+      + "than ai-handler: min speech 0.05 / min silence 0.40 vs 0.12 / 0.55)"));
   }
   $("vadBarNote").innerHTML = "— " + notes.join(grey(" · "));
 }
@@ -919,6 +923,7 @@ function renderCandidateCard(runId, e) {
       html += `<div class="meta">latency: init ${e.latency.init_ms} ms · per-20ms-block p95 ${e.latency.block_ms_p95} ms · algo delay ${e.latency.algo_delay_ms} ms</div>`;
     }
     html += vadLine(e.vad, e.vad_error, baseVad());
+    html += truthLine(e.truth_score);
     if (e.output) {
       html += `<canvas class="wave" width="1600" height="128" id="wave-${e.id}"></canvas>
         <audio controls preload="metadata" src="${fileUrl(e.output)}"></audio>
@@ -997,10 +1002,14 @@ function renderInputCard(runId, meta) {
     ${inScores}
     ${vadLine(meta.input_vad, null, null)}
     <canvas class="wave" width="1600" height="128" id="wave-input"></canvas>
+    <!-- the raw leg is the only place a human reference can be drawn: it is the
+         one signal no candidate has touched -->
+    <div id="markBar" style="margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:6px"></div>
     <audio controls preload="metadata" src="${url}"></audio>
     <div class="dl"><a href="${url}" download="${runId}-input.wav">⬇ download input.wav</a></div>`;
   div.prepend(card);
   state.vadSpans["wave-input"] = meta.input_vad || null;
+  renderMarkBar();
   drawWave(url, "wave-input", peakKey(runId, meta.input.file));
 }
 
@@ -1068,6 +1077,7 @@ function paintWave(canvasId) {
   const W = cv.width, H = cv.height, mid = H / 2;
   ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, W, H);
   paintVad(ctx, canvasId, W, H);
+  paintTruth(ctx, canvasId, W, H);
   // in dB mode the sign is meaningless (log of |a|), so draw a symmetric
   // envelope rather than pretending the shape above/below zero survived
   const db = state.waveScale === "db";
@@ -1121,6 +1131,37 @@ function paintVad(ctx, canvasId, W, H) {
   }
 }
 
+// Hand-marked speech, as an amber ribbon along the top of EVERY waveform — not
+// just the input it was drawn on. Seeing your own marks above each candidate's
+// green VAD spans is the whole comparison: amber with no green under it is speech
+// that chain hid from the recogniser.
+function paintTruth(ctx, canvasId, W, H) {
+  const dur = truthDur();
+  if (!dur) return;
+  const bar = Math.max(3, Math.round(H * 0.09));
+  const band = (s, e, fill) => {
+    const x0 = Math.max(0, (s / dur) * W), x1 = Math.min(W, (e / dur) * W);
+    if (x1 <= x0) return;
+    ctx.fillStyle = fill;
+    ctx.fillRect(x0, 0, Math.max(1, x1 - x0), bar);
+  };
+  for (const [s, e] of state.truth) band(s, e, "rgba(210,153,34,0.85)");
+  // the drag in flight, on the canvas being dragged only
+  if (state.drag && state.drag.cv.id === canvasId) {
+    const a = Math.min(state.drag.from, state.drag.to) * dur;
+    const b = Math.max(state.drag.from, state.drag.to) * dur;
+    band(a, b, "rgba(210,153,34,0.45)");
+    const x0 = (a / dur) * W, x1 = (b / dur) * W;
+    ctx.fillStyle = "rgba(210,153,34,0.12)";
+    ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
+  }
+}
+
+function truthDur() {
+  const m = state.runMeta || {};
+  return (m.input && m.input.duration_s) || (m.input_vad && m.input_vad.duration_s) || 0;
+}
+
 function repaintAllWaves() {
   state.fitCache = null;
   Object.keys(state.wavePeaks).forEach(paintWave);
@@ -1151,12 +1192,122 @@ function seekAndPlay(audio, frac) {
 }
 
 document.addEventListener("click", (ev) => {
+  if (state.marking) return;   // in mark mode a click is the end of a drag
   const cv = ev.target.closest && ev.target.closest("canvas.wave");
   if (!cv) return;
   const audio = waveAudio(cv);
   if (!audio) return;
   const r = cv.getBoundingClientRect();
   seekAndPlay(audio, Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
+});
+
+// -------------------------------------------------------- mark my speech
+// Drag on the INPUT waveform to paint where your own speech is. Delegated on
+// document because #wave-input is rebuilt on every loadRun, and mousemove/up go
+// on document too so a drag that leaves the canvas still finishes cleanly
+// instead of leaving a half-painted region stuck to the cursor.
+const fracOf = (cv, ev) => {
+  const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+};
+
+document.addEventListener("mousedown", (ev) => {
+  if (!state.marking || ev.button !== 0) return;
+  const cv = ev.target.closest && ev.target.closest("#wave-input");
+  if (!cv) return;
+  ev.preventDefault();          // otherwise the drag selects surrounding text
+  state.drag = { cv, from: fracOf(cv, ev), to: fracOf(cv, ev) };
+});
+document.addEventListener("mousemove", (ev) => {
+  if (!state.drag) return;
+  state.drag.to = fracOf(state.drag.cv, ev);
+  paintWave(state.drag.cv.id);
+});
+document.addEventListener("mouseup", () => {
+  const d = state.drag;
+  state.drag = null;
+  if (!d) return;
+  const dur = truthDur();
+  const a = Math.min(d.from, d.to) * dur, b = Math.max(d.from, d.to) * dur;
+  // a click without a drag is how you delete: it removes the region under it
+  if (b - a < 0.02) {
+    const t = a;
+    const hit = state.truth.findIndex(([s, e]) => t >= s && t <= e);
+    if (hit >= 0) state.truth.splice(hit, 1);
+  } else {
+    state.truth.push([a, b]);
+  }
+  renderMarkBar();
+  repaintAllWaves();
+});
+
+function markedSpeech() {
+  return state.truth.reduce((n, [s, e]) => n + (e - s), 0);
+}
+
+function renderMarkBar() {
+  const bar = $("markBar");
+  if (!bar) return;
+  const dur = truthDur();
+  const cov = dur ? (markedSpeech() / dur) * 100 : 0;
+  const summary = `<span class="meta">${state.truth.length} region${
+    state.truth.length === 1 ? "" : "s"} · ${markedSpeech().toFixed(2)} s
+    (${cov.toFixed(0)}% of the call)</span>`;
+  if (EX) {   // no server to save to; show what was marked and nothing else
+    bar.innerHTML = state.truth.length
+      ? `<span class="meta" style="color:#d29922">✎ marked speech</span> ${summary}`
+      : "";
+    return;
+  }
+  if (!state.marking) {
+    bar.innerHTML =
+      `<button class="mini" id="btnMark">✎ ${state.truth.length ? "edit" : "mark"} my speech</button>`
+      + (state.truth.length ? " " + summary : "");
+  } else {
+    bar.innerHTML = `<button class="mini primary" id="btnMarkDone">✓ done</button>
+      <button class="mini" id="btnMarkUndo">undo</button>
+      <button class="mini" id="btnMarkClear">clear</button>
+      <button class="mini" id="btnMarkCancel">cancel</button> ${summary}
+      <span class="hint" style="margin:0;display:block">Drag across the waveform above
+        to mark a stretch of <b>your</b> speech; click inside a region to delete it.
+        Click-to-play is off while marking. Press done to score every candidate's
+        VAD against your marks.</span>`;
+  }
+}
+
+// Delegated: the bar is re-rendered on every action, so bound handlers would die.
+document.addEventListener("click", async (ev) => {
+  const t = ev.target;
+  if (!t.id || !t.id.startsWith("btnMark")) return;
+  if (t.id === "btnMark") {
+    state.marking = true;
+    state.truthBackup = state.truth.map((x) => x.slice());
+    setStatus("marking mode — drag on the input waveform");
+  } else if (t.id === "btnMarkUndo") {
+    state.truth.pop();
+  } else if (t.id === "btnMarkClear") {
+    state.truth = [];
+  } else if (t.id === "btnMarkCancel") {
+    state.truth = state.truthBackup || [];
+    state.marking = false;
+    setStatus("");
+  } else if (t.id === "btnMarkDone") {
+    state.marking = false;
+    try {
+      const r = await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/truth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spans: state.truth }),
+      });
+      setStatus(`marked ${r.n} region(s), ${r.speech_s} s of speech — scoring`);
+      loadRun(state.selectedRun);   // re-scores every candidate against the marks
+      return;
+    } catch (e) {
+      setStatus("could not save marks: " + e.message, true);
+    }
+  }
+  renderMarkBar();
+  repaintAllWaves();
 });
 
 // One rAF loop for whatever is playing, started by the (non-bubbling, hence
@@ -1190,6 +1341,8 @@ async function loadRun(runId) {
   state.wavePeaks = {}; state.fitCache = null; state.vadSpans = {};
                          // canvases are about to be replaced; stale peaks would
                          // repaint onto whatever canvas reuses the id
+  state.truth = (meta.truth_spans || []).map((x) => x.slice());
+  state.marking = false; state.drag = null;
   $("results").innerHTML = "";
   for (const e of meta.candidates || []) renderCandidateCard(runId, e);
   renderInputCard(runId, meta);
@@ -1198,8 +1351,29 @@ async function loadRun(runId) {
     tr.classList.toggle("sel", tr.dataset.id === runId));
 }
 
+// ------------------------------------------------- vad vs my marked speech
+// Scored server-side (nc_bench/vad.py score_spans) and stored per candidate as
+// `truth_score`. It lives there rather than here because saving the marks is
+// already a round trip, so computing on the way costs nothing — and because a
+// frame-mask comparison is real logic that deserves a runnable check
+// (scripts/check_truth_score.py), which JS in a <script> tag would not get.
+function truthLine(t) {
+  if (!t) return "";
+  const col = t.agree >= 0.9 ? "#4ec9b0" : t.agree >= 0.75 ? "#d29922" : "#e06c75";
+  return `<div class="meta"><b>vs my marks</b>
+    <span style="color:${col}">${(t.agree * 100).toFixed(1)}% agree</span>
+    · missed <b>${t.miss_s.toFixed(2)} s</b> of my speech
+    · ${t.fa_s.toFixed(2)} s marked speech I didn't</div>`;
+}
+
 // --------------------------------------------------------------- rankings
 const CATEGORIES = [
+  // First when it exists: it is the only column scored against what a human says
+  // was actually spoken, rather than against another model's opinion.
+  { key: "agree", label: "VAD vs my marked speech", higher: true,
+    fmt: (v) => (v * 100).toFixed(1) + "%", get: (_s, e) => e.truth_score?.agree },
+  { key: "miss",  label: "My speech the VAD missed", higher: false,
+    fmt: (v) => v.toFixed(2) + " s", get: (_s, e) => e.truth_score?.miss_s },
   { key: "ovrl",  label: "DNSMOS OVRL",        higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.ovrl },
   { key: "sig",   label: "DNSMOS SIG (voice)", higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.sig },
   { key: "bak",   label: "DNSMOS BAK (bkgd)",  higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.bak },
@@ -1353,6 +1527,7 @@ function clearResults(msg) {
   $("vadBar").style.display = "none";
   state.runMeta = null;
   state.vadSpans = {};
+  state.truth = []; state.marking = false; state.drag = null;
 }
 
 // ------------------------------------------------------------------ init
