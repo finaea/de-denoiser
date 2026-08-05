@@ -90,6 +90,17 @@
   tr.run.sel td { background: #1c2430; }
   .spin { display: inline-block; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* jump rail: the page is one long column and the sections that matter are far
+     apart once a run has 35 candidate cards between them */
+  nav.rail {
+    flex: 0 0 38px; position: sticky; top: 54px;
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
+  }
+  nav.rail button {
+    width: 38px; height: 38px; padding: 0; font-size: 15px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
 </style>
 </head>
 <body>
@@ -191,8 +202,10 @@
       from that point</b>; an orange playhead tracks it.</div>
   </div>
 
-  <div class="box">
-    <h2>Results <span id="resRun" style="text-transform:none;color:#9aa7b4"></span></h2>
+  <div class="box" id="resultsBox">
+    <h2>Results <span id="resRun" style="text-transform:none;color:#9aa7b4"></span>
+      <button id="btnReproc" class="mini" style="display:none;margin-left:8px"
+        title="re-run this run's stored input.wav through whatever is ticked in the sidebar">↻ re-run ticked candidates</button></h2>
     <div id="noteEdit" style="display:none;gap:6px;margin-bottom:8px">
       <input id="runNote" placeholder="note for this run — what were the conditions?"
         style="flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:5px 8px;font:11px/1.5 ui-monospace,Menlo,monospace" />
@@ -228,12 +241,12 @@
     <div id="results"><div class="hint">No run selected. Record, upload, or pick one from history.</div></div>
   </div>
 
-  <div class="box">
+  <div class="box" id="rankBox">
     <h2>Rankings <span id="rankRun" style="text-transform:none;color:#6e7681">— within one run, never across runs</span></h2>
     <div id="rankings" class="hint">No run selected.</div>
   </div>
 
-  <div class="box">
+  <div class="box" id="histBox">
     <h2>History</h2>
     <table>
       <thead><tr><th>run</th><th>source</th><th>duration</th><th>note</th><th>candidates</th><th>status</th>
@@ -242,6 +255,12 @@
     </table>
   </div>
 </main>
+
+<nav class="rail">
+  <button data-jump="resultsBox" title="Results">▤</button>
+  <button data-jump="rankBox" title="Rankings">⇅</button>
+  <button data-jump="histBox" title="History">⟲</button>
+</nav>
 </div>
 
 <!-- NC_EXPORT_DATA -->
@@ -742,6 +761,47 @@ $("btnExport").onclick = () => {
       $("btnExport").textContent = "⬇ export all runs";
     }
   }, 15 * 60 * 1000);
+};
+
+// ------------------------------------------------------------- reprocess
+// Re-runs a finished run's stored input.wav through the currently ticked
+// candidates. The ticks are chosen before the call and which candidates matter is
+// only obvious after hearing it, so forgetting one used to waste the recording.
+$("btnReproc").onclick = async () => {
+  if (!state.selectedRun) return;
+  const cands = tickedCandidates();
+  if (!cands.length) { setStatus("tick at least one candidate in the sidebar", true); return; }
+  // live-rail candidates cannot replay from a wav; drop them here so one stray
+  // tick does not turn into a 400 for the whole request
+  const live = cands.filter((c) => {
+    const k = state.candidates.find((x) => x.id === c);
+    return k && k.live_only;
+  });
+  const usable = cands.filter((c) => !live.includes(c));
+  if (!usable.length) {
+    setStatus("only live-only candidates are ticked — those need a live call", true);
+    return;
+  }
+  const btn = $("btnReproc");
+  btn.disabled = true; btn.textContent = "↻ running…";
+  try {
+    setPhase("processing", "reprocessing");
+    prepareResultsSkeleton(state.selectedRun, usable);
+    await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/reprocess`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidates: usable, concurrency: $("conc").value }),
+    });
+    setStatus(`reprocessing ${state.selectedRun} with ${usable.length} candidates`
+      + (live.length ? ` (skipped ${live.length} live-only)` : ""));
+    // run_done arrives on the websocket and reloads the run
+  } catch (e) {
+    setStatus("reprocess failed: " + e.message, true);
+    setPhase("idle");
+    loadRun(state.selectedRun);
+  } finally {
+    btn.disabled = false; btn.textContent = "↻ re-run ticked candidates";
+  }
 };
 
 // ------------------------------------------------------------- start/stop
@@ -1338,6 +1398,9 @@ async function loadRun(runId) {
   $("runNote").value = meta.note || "";
   showScriptUsed(meta.script);
   showVadBar(meta);
+  // needs a server and an input.wav to replay
+  $("btnReproc").style.display =
+    (!EX && meta.input && meta.input.file) ? "" : "none";
   state.wavePeaks = {}; state.fitCache = null; state.vadSpans = {};
                          // canvases are about to be replaced; stale peaks would
                          // repaint onto whatever canvas reuses the id
@@ -1461,14 +1524,33 @@ function showScriptUsed(script) {
   $("scriptUsedText").style.color = "#e6edf3";
 }
 
+// The header is sticky, so scrollIntoView({block:"start"}) tucks the heading you
+// asked for underneath it. Measure the header instead of hard-coding its height.
+document.querySelector("nav.rail").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-jump]");
+  if (!btn) return;
+  const el = $(btn.dataset.jump);
+  if (!el) return;
+  const gap = document.querySelector("header").offsetHeight + 8;
+  window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - gap,
+                    behavior: "smooth" });
+  flash(el);
+});
+
+// Same treatment jumpToCandidate uses: landing silently in a wall of near-identical
+// boxes leaves you unsure whether anything happened.
+function flash(el) {
+  el.style.transition = "outline-color .25s";
+  el.style.outline = "2px solid #58a6ff";
+  setTimeout(() => { el.style.outlineColor = "transparent"; }, 900);
+  setTimeout(() => { el.style.outline = ""; }, 1300);
+}
+
 function jumpToCandidate(cid) {
   const card = $("card-" + cid);
   if (!card) { setStatus("no card for " + cid + " in this run", true); return; }
   card.scrollIntoView({ behavior: "smooth", block: "center" });
-  card.style.transition = "outline-color .25s";
-  card.style.outline = "2px solid #58a6ff";
-  setTimeout(() => { card.style.outlineColor = "transparent"; }, 1200);
-  setTimeout(() => { card.style.outline = ""; }, 1600);
+  flash(card);
 }
 
 // ---------------------------------------------------------------- history
@@ -1525,6 +1607,7 @@ function clearResults(msg) {
   $("noteEdit").style.display = "none";
   $("scriptUsed").style.display = "none";
   $("vadBar").style.display = "none";
+  $("btnReproc").style.display = "none";
   state.runMeta = null;
   state.vadSpans = {};
   state.truth = []; state.marking = false; state.drag = null;

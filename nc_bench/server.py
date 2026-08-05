@@ -383,8 +383,11 @@ async def _process_run(
     meta["input_scores"] = input_scores
     # The raw leg's spans are the reference every candidate is read against: a
     # chain that drops a span dropped a turn production would have transcribed.
-    # rate follows the source: a phone leg is narrowband whatever it arrives as
-    vad_params = vad.defaults(meta.get("source"))
+    # Rate follows the source (a phone leg is narrowband whatever it arrives as),
+    # but a reprocess keeps whatever the run was already measured at — resetting to
+    # defaults would silently make the new candidates incomparable with the marks
+    # and spans already stored on this run.
+    vad_params = meta.get("vad_params") or vad.defaults(meta.get("source"))
     meta["vad_params"] = vad_params
     try:
         meta["input_vad"] = await vad.analyze(input_wav, vad_params)
@@ -487,6 +490,72 @@ async def api_run(run_id: str):
         return store.load_meta(run_id)
     except (KeyError, FileNotFoundError):
         raise HTTPException(404, "run not found")
+
+
+_reprocessing: set[str] = set()
+
+
+@app.post("/api/runs/{run_id}/reprocess")
+async def reprocess_run(run_id: str, body: dict | None = None):
+    """Re-run a finished run's stored input.wav through a different candidate set.
+
+    Exists because the candidate ticks are chosen before the call and the
+    interesting ones are obvious only after hearing it — forgetting to tick
+    something used to mean the recording was wasted. Nothing in _process_run needs
+    a live session; it works entirely off run_dir/input.wav.
+
+    Keeps the run's id, source, script, note and hand marks, which is the whole
+    advantage over downloading input.wav and re-uploading it: the same id keeps the
+    VAD rate that the source implies, and a new upload run would be measured at
+    the upload default instead.
+    """
+    body = body or {}
+    try:
+        meta = store.load_meta(run_id)
+        run_dir = store.run_dir(run_id)
+    except (KeyError, FileNotFoundError):
+        raise HTTPException(404, f"unknown run: {run_id}") from None
+    if not (run_dir / "input.wav").is_file():
+        raise HTTPException(409, f"{run_id} has no input.wav to reprocess")
+    if _session is not None:
+        raise HTTPException(409, "a live session is active; stop it first")
+    # Two overlapping _process_run calls on ONE run would interleave their writes
+    # to the same meta.json — the upload path cannot collide because every upload
+    # is a fresh id, but two clicks of this button can.
+    if run_id in _reprocessing:
+        raise HTTPException(409, f"{run_id} is already reprocessing")
+
+    candidate_ids = body.get("candidates") or []
+    if not candidate_ids:
+        raise HTTPException(400, "tick at least one candidate")
+    known = _candidates_by_id()
+    unknown = [c for c in candidate_ids if c not in known]
+    if unknown:
+        raise HTTPException(400, f"unknown candidates: {unknown}")
+    # live-rail candidates have no audio to replay: they only exist as a filter on
+    # a live LiveKit track, so say so here instead of erroring 6 times downstream
+    live_only = [c for c in candidate_ids if known[c].get("live_only")]
+    if live_only:
+        raise HTTPException(
+            400,
+            f"these only run on a live phone/web session, not a stored wav: {live_only}",
+        )
+
+    # script defaults to the one already on the run — _process_run overwrites the
+    # key, so not passing it through would silently drop every WER
+    script = body.get("script")
+    script = (meta.get("script") or "") if script is None else str(script).strip()
+
+    async def _run() -> None:
+        try:
+            await _process_run(run_id, candidate_ids, None, script,
+                               _clamp_concurrency(body.get("concurrency")))
+        finally:
+            _reprocessing.discard(run_id)
+
+    _reprocessing.add(run_id)
+    asyncio.create_task(_run())
+    return {"run_id": run_id, "status": "processing", "candidates": candidate_ids}
 
 
 def _merge_spans(spans, limit: float) -> list[list[float]]:
