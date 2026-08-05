@@ -203,6 +203,75 @@ default. `rnnoise-bd`'s worst case is 3.59 s of speech gone.
 | 9 | `rnnoise-bd` | 8 | +1.1% | -7.4% | 5 | 3 | 91.7% |
 | 10 | `dpdfnet8` | 8 | +1.0% | -8.7% | 5 | 3 | 91.7% |
 
+## WER, VAD-cut — production-real (one STT request per turn)
+
+*Added 2026-08-05, after backfilling every run with segmented STT.*
+
+The whole-file WER above is a bench artifact: production never posts a whole call
+to the STT. The VAD cuts the call into turns and each turn is one request — so
+this table re-transcribes every candidate the way production hears it: audio cut
+at that candidate's **own** VAD spans (start extended by the prefix padding,
+overlaps merged), one request per turn, transcripts joined, WER recomputed. Both
+measurements are kept on every candidate (`wer` whole-file, `wer_seg` VAD-cut);
+the UI toggles between them.
+
+The baseline moves first, and that is the finding. Passthrough WER, same audio:
+
+| surface | whole-file | VAD-cut |
+|---|---|---|
+| phone | 0.183 | **0.330** |
+| web | 0.096 | **0.245** |
+
+Raw audio is far worse than the whole-file tables suggested, because every noise
+stretch the VAD mistakes for speech becomes a turn that transcribes as junk
+insertions. That is the cost the agreement tables measured in seconds, now in WER
+— and suppressing those phantom turns is exactly what NC is for, so candidates
+win here that lost whole-file.
+
+**Ranked by median, not mean.** One re-admitted run (`noise test phone` — its
+whole-file baseline was collapse-junk, its segmented baseline is honest at 4.545
+on an 11-word script) hands good suppressors deltas near −4.0; a mean over nine
+runs is dominated by it. The mean column stays for visibility — a large
+median–mean gap on phone IS that run. In-turn repetition collapse still occurs
+(10 candidate transcripts dropped by the same ≥5× filter).
+
+### Phone (9 runs)
+
+ΔWER vs the segmented passthrough; negative = NC helped.
+
+| # | candidate | n | median | mean | worst | W | L |
+|---|---|---|---|---|---|---|---|
+| 1 | `aic-vf-s` | 6 | -0.116 | -0.671 | -0.035 | 6 | 0 |
+| 2 | `fastenhancer-t` | 9 | -0.081 | -0.077 | +0.250 | 5 | 4 |
+| 3 | `krisp-bvc` | 7 | -0.081 | -0.549 | +0.313 | 4 | 2 |
+| 4 | `hecttor-mist` | 8 | -0.074 | -0.510 | +0.250 | 5 | 3 |
+| 5 | `krisp-bvc-tel` | 7 | -0.059 | -0.622 | +0.034 | 4 | 2 |
+| 6 | `dpdfnet2-8k+hush` | 9 | -0.059 | -0.528 | +0.094 | 5 | 3 |
+| 7 | `gtcrn+hush` | 9 | -0.059 | -0.482 | +0.189 | 5 | 4 |
+| 8 | `dtln` | 9 | -0.054 | -0.161 | +0.172 | 5 | 3 |
+| 9 | `fastenhancer-t+hecttor-coda-vi` | 9 | -0.048 | -0.402 | +0.156 | 6 | 3 |
+| 10 | `hecttor-coda-vi` | 9 | -0.035 | -0.493 | +0.031 | 6 | 1 |
+
+### Web (8 runs)
+
+| # | candidate | n | median | mean | worst | W | L |
+|---|---|---|---|---|---|---|---|
+| 1 | `aic-quail-l` | 7 | -0.063 | -0.122 | +0.091 | 5 | 1 |
+| 2 | `fastenhancer-l` | 8 | -0.047 | -0.081 | +0.135 | 5 | 2 |
+| 3 | `hecttor-coda-vi-w075` | 8 | -0.043 | -0.118 | +0.000 | 5 | 0 |
+| 4 | `hush-atten12` | 8 | -0.032 | -0.088 | +0.091 | 5 | 2 |
+| 5 | `dpdfnet-baseline` | 8 | -0.024 | -0.060 | +0.137 | 4 | 2 |
+| 6 | `dpdfnet8` | 8 | -0.015 | -0.035 | +0.091 | 4 | 3 |
+| 7 | `hecttor-coda-vi` | 8 | -0.000 | -0.066 | +0.091 | 4 | 4 |
+| 8 | `hecttor-coda` | 8 | +0.000 | -0.036 | +0.187 | 2 | 3 |
+| 9 | `dtln` | 8 | +0.000 | -0.045 | +0.162 | 3 | 3 |
+| 10 | `krisp-nc` | 7 | +0.000 | +0.024 | +0.125 | 2 | 3 |
+
+The suppressors that gut phantom turns — Hush and its combos, Krisp BVC, the
+cloud rails — lead here, and `hecttor-crest2` goes 7W/1L. On web the sign finally
+flips: `hecttor-coda-vi-w075` is 5W/0L with a worst case of exactly 0.000, where
+whole-file it never won a single run.
+
 ## The miss/agree inversion, and which to trust
 
 The web agreement leaders (`hecttor-coda-vi-w075`, `krisp-bvc`, `hecttor-coda`,
@@ -237,6 +306,15 @@ of real speech per call, and the agreement gains that do exist come from the sam
 over-suppression that eats the speech. This includes Krisp, the current production
 provider (0W/7L missed-speech on web).
 
+**The VAD-cut WER (added 2026-08-05) amends the web verdict.** Measured
+production-real — one STT request per VAD turn — raw audio is much worse than the
+whole-file tables suggested (passthrough 0.096 → 0.245 on web), because phantom
+noise turns transcribe as junk. Under that measurement NC helps both surfaces:
+`hecttor-coda-vi-w075` goes 5W/0L on web with worst-case ±0.000. "Run nothing on
+web" holds only for whole-call transcription, which production does not do; the
+production-shaped answer is that moderate suppression pays for itself by killing
+phantom turns.
+
 **If one config must serve both surfaces:** `hecttor-coda-vi-w075` is the only
 candidate in the top-10 of both STT tables and both missed-speech tables (its
 phone agreement is a neutral +0.4 %, below that top-10). But the per-surface
@@ -255,3 +333,8 @@ answer is strictly better: Hecttor ASR on phone, passthrough on web.
   but absolute spans differ from what production would cut today.
 - All STT numbers are from the local Qwen3-ASR endpoint; a different recogniser
   can reorder the STT tables. The VAD tables are recogniser-independent.
+- VAD spans carry inference jitter: onnxruntime is nondeterministic at the
+  margin, and with min_speech 0.05 s a borderline span can flicker between
+  identical analyses (measured: ±0.03–0.4 s of speech, ±1 span, on the noisiest
+  runs). Table values round well above that, but exact re-runs of the pipeline
+  may differ in the last decimal.

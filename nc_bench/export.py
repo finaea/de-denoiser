@@ -143,7 +143,8 @@ def _plan() -> tuple[list[dict], list[tuple[str, str, Path]]]:
         names = []
         if (meta.get("input") or {}).get("file"):
             names.append(meta["input"]["file"])
-        names += [c["output"] for c in (meta.get("candidates") or []) if c.get("output")]
+        for c in meta.get("candidates") or []:
+            names += [c[k] for k in ("output", "output_seg") if c.get(k)]
         for name in dict.fromkeys(names):
             p = rd / name
             if p.is_file():

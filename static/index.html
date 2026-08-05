@@ -195,6 +195,9 @@
         <label for="vadShow" style="color:#6e7681;margin-left:8px;cursor:pointer"
           title="Silero VAD spans — the turns production would cut and send to STT">
           <input type="checkbox" id="vadShow" checked style="vertical-align:-1px" /> VAD</label>
+        <label for="vadSnap" style="color:#6e7681;margin-left:8px;cursor:pointer"
+          title="clicks on a waveform snap to the nearest VAD span edge, so playback starts exactly where the VAD opened or closed a turn">
+          <input type="checkbox" id="vadSnap" style="vertical-align:-1px" /> snap</label>
       </span></h2>
     <canvas id="timeline" class="timeline" width="1600" height="280"></canvas>
     <div class="hint" id="tlHint">Live RMS of the subscribed track (20 ms windows).
@@ -205,7 +208,13 @@
   <div class="box" id="resultsBox">
     <h2>Results <span id="resRun" style="text-transform:none;color:#9aa7b4"></span>
       <button id="btnReproc" class="mini" style="display:none;margin-left:8px"
-        title="re-run this run's stored input.wav through whatever is ticked in the sidebar">↻ re-run ticked candidates</button></h2>
+        title="re-run this run's stored input.wav through whatever is ticked in the sidebar">↻ re-run ticked candidates</button>
+      <select id="werMode" style="display:none;margin-left:8px;background:#0d1117;color:#e6edf3;
+        border:1px solid #30363d;border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace"
+        title="which transcript + WER the cards and rankings show — the audio and waveform stay the full NC output either way">
+        <option value="seg">WER: ✂ VAD-cut (production-real)</option>
+        <option value="whole">WER: whole-file</option>
+      </select></h2>
     <div id="noteEdit" style="display:none;gap:6px;margin-bottom:8px">
       <input id="runNote" placeholder="note for this run — what were the conditions?"
         style="flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:5px 8px;font:11px/1.5 ui-monospace,Menlo,monospace" />
@@ -231,6 +240,9 @@
         <div id="vadFields" style="display:flex;flex-wrap:wrap;gap:4px 14px"></div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
           <button id="btnVad" class="mini">↻ re-run VAD on this run</button>
+          <button id="btnSeg" class="mini" title="cut each candidate's audio at its own
+            VAD spans, one STT request per turn — how production actually feeds the STT.
+            Speech the VAD missed is never transcribed, so WER becomes production-real.">✂ STT by VAD turns</button>
           <span class="hint" style="margin:0">Same model and state machine ai-handler
             runs. Production cuts the call into turns with this and sends <b>one turn
             per STT request</b> — the green spans are what each candidate leaves for
@@ -289,6 +301,9 @@ const state = {
   vadSpans: {},           // canvasId -> {segments, duration_s} drawn under the wave
   vadShow: true,
   runMeta: null,          // the loaded run, for "delta vs no-NC" on each card
+  werMode: "seg",         // which WER/transcript the cards show; seg = VAD-cut
+  werModeTouched: false,  // once the user picks, stop auto-defaulting per run
+  vadSnap: false,         // waveform clicks snap to the nearest VAD span edge
   truth: [],              // hand-marked speech regions [[s,e],…] for this run
   marking: false,         // drag-to-mark mode on the input waveform
   drag: null,             // {cv, from, to} while a region is being dragged
@@ -487,6 +502,8 @@ function vadExpected(meta) {
 }
 
 function showVadBar(meta) {
+  const seg = $("btnSeg");
+  if (seg) { seg.disabled = false; seg.textContent = "✂ STT by VAD turns"; }
   // meta.vad_params is authoritative, but every span set also records the
   // thresholds that produced it — so a run measured before that key existed
   // still shows its real settings instead of claiming it has none.
@@ -551,6 +568,29 @@ function vadParams() {
   if (sr) p.sample_rate = parseInt(sr.value, 10);
   return p;
 }
+$("werMode").onchange = () => {
+  state.werMode = $("werMode").value;
+  state.werModeTouched = true;
+  if (!state.runMeta) return;
+  for (const e of state.runMeta.candidates || []) renderCandidateCard(state.selectedRun, e);
+  renderRankings(state.selectedRun, state.runMeta);
+};
+
+$("btnSeg").onclick = async () => {
+  if (!state.selectedRun) return;
+  const btn = $("btnSeg");
+  btn.disabled = true; btn.textContent = "✂ transcribing…";
+  try {
+    const r = await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/stt_segmented`,
+                        { method: "POST" });
+    setStatus(`segmented STT on ${r.run_id}: ${r.candidates} candidates, turn by turn`);
+    // progress events repaint each card; run_done reloads the run
+  } catch (e) {
+    setStatus("segmented STT failed: " + e.message, true);
+    btn.disabled = false; btn.textContent = "✂ STT by VAD turns";
+  }
+};
+
 $("btnVad").onclick = async () => {
   const btn = $("btnVad");
   if (!state.selectedRun) { setStatus("load a run first", true); return; }
@@ -956,11 +996,19 @@ function renderCandidateCard(runId, e) {
   if (e.status === "error") {
     html += `<div class="err">✗ ${e.error}</div>`;
   } else {
-    if (e.stt) {
-      const t = e.stt.text || "";
+    // the toggle picks which measurement is DISPLAYED; a candidate without
+    // segmented results falls back to whole-file rather than going blank
+    const useSeg = state.werMode === "seg" && !!e.stt_seg;
+    const st = useSeg ? e.stt_seg : e.stt;
+    if (st) {
+      const t = st.text || "";
+      const seg = useSeg
+        ? ` · <span style="color:#d29922">✂ ${st.turns} turn${st.turns === 1 ? "" : "s"} (VAD-cut)</span>` : "";
       html += `<div class="stt ${t ? "" : "empty"}">${t || "(empty transcript)"}</div>
-        <div class="meta">lang: ${e.stt.language ?? "—"} · confidence: ${e.stt.confidence ?? "—"}
-        ${e.output ? sttBtn(e.id) : ""}</div>`;
+        <div class="meta">lang: ${st.language ?? "—"} · confidence: ${st.confidence ?? "—"}${seg}
+        ${e.output && !useSeg ? sttBtn(e.id) : ""}</div>`;
+    } else if (state.werMode === "seg" && e.stt_seg_error) {
+      html += `<div class="err">segmented STT failed: ${e.stt_seg_error}</div>`;
     } else if (e.stt_error) {
       html += `<div class="err">STT failed: ${e.stt_error} ${e.output ? sttBtn(e.id) : ""}</div>`;
     } else if (e.output) {
@@ -973,7 +1021,8 @@ function renderCandidateCard(runId, e) {
       bits.push(s.noise_reduction_db != null
         ? `<b>noise in gaps</b> ${s.noise_reduction_db >= 0 ? "−" : "+"}${Math.abs(s.noise_reduction_db)} dB`
         : `gap-RMS n/a (no confident speech gaps)`);
-      if (s.wer) bits.push(`<b>WER</b> ${(s.wer.wer * 100).toFixed(1)}% (${s.wer.errors}/${s.wer.ref_words} words)`);
+      const wsel = useSeg ? s.wer_seg : s.wer;
+      if (wsel) bits.push(`<b>WER${useSeg ? " ✂" : ""}</b> ${(wsel.wer * 100).toFixed(1)}% (${wsel.errors}/${wsel.ref_words} words)`);
       if (s.bandwidth_hz != null) bits.push(`<b>band</b> ${(s.bandwidth_hz / 1000).toFixed(1)} kHz`);
       html += `<div class="meta" style="margin-top:6px">${bits.join(" &nbsp;|&nbsp; ")}</div>`;
     } else if (e.scores_error) {
@@ -987,7 +1036,11 @@ function renderCandidateCard(runId, e) {
     if (e.output) {
       html += `<canvas class="wave" width="1600" height="128" id="wave-${e.id}"></canvas>
         <audio controls preload="metadata" src="${fileUrl(e.output)}"></audio>
-        <div class="dl"><a href="${fileUrl(e.output)}" download="${runId}-${e.id}.wav">⬇ download ${e.output}</a></div>`;
+        <div class="dl"><a href="${fileUrl(e.output)}" download="${runId}-${e.id}.wav">⬇ download ${e.output}</a>${
+          useSeg && e.output_seg
+            ? ` · <a href="${fileUrl(e.output_seg)}" download="${runId}-${e.id}-vadcut.wav"
+                 title="the turns concatenated — exactly the audio the STT transcribed">⬇ vad-cut audio</a>` : ""
+        }</div>`;
     }
   }
   card.innerHTML = html;
@@ -1258,7 +1311,27 @@ document.addEventListener("click", (ev) => {
   const audio = waveAudio(cv);
   if (!audio) return;
   const r = cv.getBoundingClientRect();
-  seekAndPlay(audio, Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
+  let frac = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+  // snap: land exactly on the nearest VAD edge of THIS candidate's spans, so
+  // "did the VAD open late / close early" is answerable by ear
+  if (state.vadSnap) {
+    const v = state.vadSpans[cv.id];
+    if (v && v.duration_s && (v.segments || []).length) {
+      const t = frac * v.duration_s;
+      let best = null, bd = Infinity;
+      for (const [a, b] of v.segments) {
+        for (const [edge, kind] of [[a, "start"], [b, "end"]]) {
+          const d = Math.abs(edge - t);
+          if (d < bd) { bd = d; best = [edge, kind]; }
+        }
+      }
+      if (best) {
+        frac = best[0] / v.duration_s;
+        setStatus(`snapped to VAD ${best[1]} @ ${best[0].toFixed(2)}s`);
+      }
+    }
+  }
+  seekAndPlay(audio, frac);
 });
 
 // -------------------------------------------------------- mark my speech
@@ -1394,6 +1467,11 @@ async function loadRun(runId) {
   state.selectedRun = runId;
   state.runMeta = meta;   // baseVad() reads the no-NC span set off this
   $("resRun").textContent = "— " + runId + " (" + meta.source + ", " + meta.status + ")";
+  const hasSeg = (meta.candidates || []).some((c) => c.stt_seg);
+  if (!hasSeg) state.werMode = "whole";        // nothing segmented to show
+  else if (!state.werModeTouched) state.werMode = "seg";
+  $("werMode").style.display = hasSeg ? "" : "none";
+  $("werMode").value = state.werMode;
   $("noteEdit").style.display = EX ? "none" : "flex";  // no server to save to
   $("runNote").value = meta.note || "";
   showScriptUsed(meta.script);
@@ -1441,7 +1519,9 @@ const CATEGORIES = [
   { key: "sig",   label: "DNSMOS SIG (voice)", higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.sig },
   { key: "bak",   label: "DNSMOS BAK (bkgd)",  higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.bak },
   { key: "nr",    label: "Noise cut in gaps",  higher: true,  fmt: (v) => v.toFixed(1) + " dB", get: (s) => s.noise_reduction_db },
-  { key: "wer",   label: "WER (scripted)",     higher: false, fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer?.wer },
+  { key: "wer",   label: "WER (whole-file)",   higher: false, fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer?.wer },
+  { key: "wer_seg", label: "WER ✂ VAD-cut (production-real)", higher: false,
+    fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer_seg?.wer },
   { key: "p95",   label: "Block p95 (offline)", higher: false, fmt: (v) => v.toFixed(2) + " ms", get: (_s, e) => e.latency?.block_ms_p95 },
 ];
 
@@ -1566,7 +1646,9 @@ async function loadHistory() {
     tr.innerHTML = `<td>${r.id}</td><td>${r.source}</td><td>${dur}</td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;color:#9aa7b4"
           title="${esc(r.note || "")}">${esc(r.note || "—")}</td>
-      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${cands}</td><td>${r.status}</td>`
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${cands}</td>
+      <td>${r.status}${(r.candidates || []).some((c) => c.stt_seg)
+        ? ' <span style="color:#d29922" title="has VAD-cut transcripts: one STT request per turn, production-real WER">✂</span>' : ""}</td>`
       + (EX ? "" : `<td style="text-align:right"><button class="mini danger"
            data-del="${esc(r.id)}" title="delete this run and its audio">✕</button></td>`);
     tr.onclick = () => loadRun(r.id);
@@ -1670,6 +1752,7 @@ function initExport() {
     speech: the turns production would have cut and sent to STT one at a time.`;
   $("exportWrap").remove();
   $("btnVad").remove();       // read-only: renderVadFields drops the inputs too
+  $("btnSeg").remove();
   $("histDelHead").remove();
   $("pillState").remove(); $("pillRoom").remove(); $("pillTimer").remove();
   const banner = document.createElement("div");
@@ -1710,6 +1793,7 @@ $("vadShow").onchange = () => {
   state.vadShow = $("vadShow").checked;
   repaintAllWaves();
 };
+$("vadSnap").onchange = () => { state.vadSnap = $("vadSnap").checked; };
 
 if (EX) initExport(); else initLive();
 </script>

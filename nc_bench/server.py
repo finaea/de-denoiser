@@ -495,6 +495,77 @@ async def api_run(run_id: str):
 _reprocessing: set[str] = set()
 
 
+@app.post("/api/runs/{run_id}/stt_segmented")
+async def stt_segmented(run_id: str):
+    """Re-transcribe every candidate the way production would hear it: cut the
+    output audio at that candidate's own VAD spans, one STT request per turn,
+    transcripts joined in time order, WER recomputed.
+
+    The whole-file transcript the run was scored with is a bench artifact —
+    production never posts two minutes of audio in one request, and long files
+    push the autoregressive STT into repetition collapse. This mode makes the
+    VAD's misses REAL: speech the VAD failed to find is simply never transcribed,
+    exactly as in production, so the WER and the missed-speech metric finally
+    describe the same pipeline.
+
+    Cuts use each candidate's OWN spans (production runs VAD on the NC-processed
+    track, not on the raw leg), extended by the run's prefix padding — see
+    stt.transcribe_turns. Candidates without measured spans are skipped, not
+    silently transcribed whole-file: mixing modes inside a run would corrupt the
+    within-run ranking.
+
+    Stored ALONGSIDE the whole-file results, never over them: `stt_seg`,
+    `scores.wer_seg`, and `output_seg` (the concatenated cut audio, so what the
+    STT actually heard is listenable). The UI toggles between the two WERs.
+    """
+    try:
+        meta = store.load_meta(run_id)
+        run_dir = store.run_dir(run_id)
+    except (KeyError, FileNotFoundError):
+        raise HTTPException(404, f"unknown run: {run_id}") from None
+    if _session is not None:
+        raise HTTPException(409, "a live session is active; stop it first")
+    if run_id in _reprocessing:
+        raise HTTPException(409, f"{run_id} is already busy")
+    todo = [c for c in meta.get("candidates") or []
+            if c.get("output") and (c.get("vad") or {}).get("segments") is not None]
+    if not todo:
+        raise HTTPException(409, "no candidate has VAD spans — press 're-run VAD "
+                                 "on this run' first")
+    pad = float((meta.get("vad_params") or {}).get("prefix_padding_duration", 0.5))
+    script = (meta.get("script") or "").strip()
+
+    async def _run() -> None:
+        try:
+            done = skipped = 0
+            for c in meta.get("candidates") or []:
+                if not c.get("output") or (c.get("vad") or {}).get("segments") is None:
+                    skipped += 1
+                    continue
+                wav = run_dir / c["output"]
+                cut = run_dir / f"{c['id']}.vadcut.wav"
+                try:
+                    c["stt_seg"] = await stt.transcribe_turns(
+                        wav, c["vad"]["segments"], pad, cut_wav=cut)
+                    c["output_seg"] = cut.name
+                    c.pop("stt_seg_error", None)
+                    if script and isinstance(c.get("scores"), dict):
+                        c["scores"]["wer_seg"] = scoring.wer(script, c["stt_seg"]["text"])
+                except Exception as e:
+                    c["stt_seg_error"] = f"segmented stt: {e}"
+                done += 1
+                await broadcast({"type": "progress", "run_id": run_id,
+                                 "candidate": c["id"], "stage": "done", "entry": c})
+            store.save_meta(run_id, meta)
+            await broadcast({"type": "run_done", "run_id": run_id})
+        finally:
+            _reprocessing.discard(run_id)
+
+    _reprocessing.add(run_id)
+    asyncio.create_task(_run())
+    return {"run_id": run_id, "status": "processing", "candidates": len(todo)}
+
+
 @app.post("/api/runs/{run_id}/reprocess")
 async def reprocess_run(run_id: str, body: dict | None = None):
     """Re-run a finished run's stored input.wav through a different candidate set.
