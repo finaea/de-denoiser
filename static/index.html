@@ -4,102 +4,246 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>NC Bench</title>
+<!-- Pure's two faces. An exported zip opened offline just falls through to the
+     stacks below them, which is why every rule names the full stack. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Chivo+Mono:wght@400;500;700&display=swap" />
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    /* text */
+    --heading: #f0ede6; --body: #c5c2bb; --body-subtle: #8a8781;
+    /* surfaces */
+    --near-black: #141314; --card: #1a1a1a; --card-soft: #1f1f1f;
+    --hover-fill: #2a2a28; --deep: #0a0a0a;
+    /* brand */
+    --brand: #f79f79; --brand-medium: #fbb393; --brand-strong: #da8a63; --brand-soft: #3a281f;
+    /* status */
+    --success: #22c55e; --success-strong: #5ee7a0;
+    --danger: #f43f5e; --danger-strong: #fb7185;
+    --warning: #f59e0b; --fg-warning: #fbbf5a;
+    /* borders + focus */
+    --border: #262626; --border-strong: #444; --focus-ring: 0 0 0 3px #f79f794d;
+    /* type */
+    --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono: "Chivo Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   * { box-sizing: border-box; }
   body {
-    margin: 0; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #0d1117; color: #e6edf3;
+    margin: 0; position: relative;
+    font: 13px/1.5 var(--sans);
+    background: var(--near-black); color: var(--body);
+    -webkit-font-smoothing: antialiased;
   }
-  h1 { font-size: 16px; margin: 0; }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: #6e7681; margin: 0 0 6px; }
-  header {
-    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
-    border-bottom: 1px solid #21262d; position: sticky; top: 0; background: #0d1117; z-index: 5;
-    flex-wrap: wrap;
+  /* grain: the one thing that keeps a flat near-black from reading as a void */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .09;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.52' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat; background-size: 260px 260px;
   }
-  .layout { display: flex; gap: 14px; padding: 14px 16px; align-items: flex-start; }
-  aside {
-    flex: 0 0 280px; position: sticky; top: 54px;
-    display: flex; flex-direction: column; gap: 14px;
-  }
-  main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-  .box { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 12px; }
+  ::selection { background: var(--brand); color: var(--near-black); }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: var(--deep); }
+  ::-webkit-scrollbar-thumb { background: var(--hover-fill); border: 2px solid var(--deep); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
-  button {
-    border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; font: inherit;
-    background: #21262d; color: #e6edf3; cursor: pointer;
+  h1 {
+    margin: 0; font: 700 13px/1 var(--mono); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--heading);
+    display: inline-flex; align-items: center; gap: 9px;
   }
-  button:hover:not(:disabled) { background: #30363d; }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  button.primary { background: #238636; border-color: #2ea043; }
-  button.danger { background: #da3633; border-color: #f85149; }
+  h1::before { content: ""; width: 16px; height: 2px; background: var(--brand); }
+  /* every section label is an eyebrow: mono, uppercase, peach tick. Absolute so
+     the tick survives the headings that are flex rows with a button in them. */
+  h2 {
+    margin: 0 0 9px; position: relative; padding-left: 15px;
+    font: 500 11px/1.4 var(--mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--body-subtle);
+  }
+  h2::before { content: ""; position: absolute; left: 0; top: .55em; width: 9px; height: 1px; background: var(--brand); }
+  h2 b, h2 .lit { color: var(--heading); font-weight: 500; }
+  /* the control cluster some headings carry — opts out of the eyebrow casing */
+  .h2tools { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--body-subtle);
+             display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .h2tools label { cursor: pointer; }
+
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 13px 20px;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    background: var(--near-black); z-index: 20; flex-wrap: wrap;
+  }
+  .layout { display: flex; gap: 16px; padding: 16px 20px 64px; align-items: flex-start;
+            position: relative; z-index: 1; }
+  /* sticky only works while the column fits the viewport, and five panels plus a
+     35-model tick list never do — so the rail itself scrolls, and the candidate
+     list scrolls inside it so Start/Stop stay reachable at the top. */
+  aside {
+    flex: 0 0 296px; position: sticky; top: 68px;
+    max-height: calc(100vh - 84px); overflow-y: auto;
+    padding-right: 8px; margin-right: -8px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .box { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+
+  /* square, mono, uppercase — every button on the page is a Pure button */
+  button {
+    border: 0; border-radius: 0; cursor: pointer;
+    font: 700 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+    padding: 12px 16px; color: var(--body); background: #242320;
+    box-shadow: inset 0 0 0 1px #33322e;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    transition: background .16s, color .16s, box-shadow .16s;
+  }
+  button:hover:not(:disabled) { background: var(--hover-fill); color: var(--heading); }
+  button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--brand), var(--focus-ring); }
+  button:disabled { opacity: .38; cursor: not-allowed; }
+  button.primary { background: var(--brand); color: var(--near-black); box-shadow: none; }
+  button.primary:hover:not(:disabled) { background: var(--brand-strong); color: var(--near-black); }
+  button.danger { background: var(--danger); color: #fff; box-shadow: none; }
+  button.danger:hover:not(:disabled) { background: var(--danger-strong); color: var(--near-black); }
   .btnrow { display: flex; gap: 8px; }
   .btnrow button { flex: 1; }
-  button.mini { padding: 2px 7px; font-size: 10px; border-radius: 5px;
-    text-transform: none; letter-spacing: 0; }
+  button.mini { padding: 6px 10px; font-size: 10px; letter-spacing: .07em; }
+  button.mini.primary { color: var(--near-black); }
+  /* one of these sits in every history row: destructive, but not twenty red
+     blocks loud. It earns its fill on hover, where the intent is real. */
+  button.mini.danger {
+    background: none; color: var(--body-subtle); box-shadow: inset 0 0 0 1px var(--border);
+  }
+  button.mini.danger:hover:not(:disabled) { background: var(--danger); color: #fff; box-shadow: none; }
 
-  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px;
-          border: 1px solid #30363d; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .pill.ok { border-color: #3fb950; color: #3fb950; }
-  .pill.warn { border-color: #d29922; color: #d29922; }
-  .pill.err { border-color: #f85149; color: #f85149; }
-  #status { font-size: 12px; color: #9aa7b4; }
-  #status.err { color: #f85149; }
+  .pill {
+    display: inline-block; padding: 4px 9px; border-radius: 4px;
+    font: 500 10px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    background: var(--card); border: 1px solid var(--border); color: var(--body-subtle);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .pill.ok { border-color: var(--success); color: var(--success-strong); background: #1b3424; }
+  .pill.warn { border-color: var(--warning); color: var(--fg-warning); background: #3b2e18; }
+  .pill.err { border-color: var(--danger); color: var(--danger-strong); background: #3b2024; }
+  #status { font: 11px/1.4 var(--mono); color: var(--body-subtle); }
+  #status.err { color: var(--danger-strong); }
 
-  .radio { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #e6edf3; cursor: pointer; margin-top: 4px; }
-  .check { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #e6edf3; cursor: pointer; margin-top: 6px; }
-  .check .why { color: #6e7681; font-size: 11px; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--brand); }
+  .radio { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--body); cursor: pointer; margin-top: 6px; }
+  .check { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--body); cursor: pointer; margin-top: 7px; }
+  .radio:hover, .check:hover { color: var(--heading); }
+  .check .why { color: var(--body-subtle); font-size: 11px; }
   .check input { margin-top: 2px; }
-  .hint { font-size: 11px; color: #6e7681; margin-top: 8px; }
-  .field { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
-  .field label { font-size: 11px; color: #9aa7b4; }
-  input[type=file] { font-size: 11px; color: #9aa7b4; }
+  .hint { font-size: 11px; line-height: 1.55; color: var(--body-subtle); margin-top: 9px; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+  .field label, .lbl {
+    font: 500 10px/1.4 var(--mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--body-subtle);
+  }
+  code { font: .92em var(--mono); color: var(--brand-medium); background: #f79f7912;
+         padding: 1px 4px; border-radius: 3px; }
+  a { color: var(--brand); text-decoration-color: #f79f7955; text-underline-offset: 2px; }
+  a:hover { color: var(--brand-medium); }
+
+  /* inputs: 6px, deepest well, peach focus ring */
+  select, textarea, input[type=text], input[type=number], input[type=file] {
+    background: var(--deep); color: var(--heading);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; font: 11px/1.5 var(--mono);
+  }
+  select:hover, textarea:hover, input[type=text]:hover, input[type=number]:hover { border-color: var(--border-strong); }
+  select:focus, textarea:focus, input:focus {
+    outline: none; border-color: var(--brand); box-shadow: var(--focus-ring);
+  }
+  select { cursor: pointer; padding: 5px 6px; }
+  textarea { width: 100%; resize: vertical; color: var(--heading); }
+  textarea::placeholder { color: #6b6862; }
+  .num { width: 68px; }
+  input[type=file] { width: 100%; color: var(--body-subtle); padding: 6px; }
+  input[type=file]::file-selector-button {
+    border: 0; border-radius: 0; margin-right: 10px; cursor: pointer;
+    font: 700 10px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase;
+    padding: 7px 11px; background: #242320; color: var(--body); box-shadow: inset 0 0 0 1px #33322e;
+  }
+  input[type=file]::file-selector-button:hover { background: var(--hover-fill); color: var(--heading); }
 
   /* these heights are the 1x defaults, in effect until sizeCanvas() sets an
      inline height (which outranks a class rule) from the height multiplier.
      Keep them in sync with REF_HALF_TL / REF_HALF_WAVE x2. */
-  canvas.timeline { width: 100%; height: 140px; display: block; background: #010409;
-                    border: 1px solid #30363d; border-radius: 8px; }
-  canvas.wave { width: 100%; height: 64px; display: block; background: #010409;
-                border: 1px solid #21262d; border-radius: 6px; cursor: pointer; }
-  canvas.wave:hover { border-color: #58a6ff; }
+  canvas.timeline { width: 100%; height: 140px; display: block; background: var(--deep);
+                    border: 1px solid var(--border); border-radius: 6px; }
+  canvas.wave { width: 100%; height: 64px; display: block; background: var(--deep);
+                border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+  canvas.wave:hover { border-color: var(--brand); }
 
-  .cand-card { background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
-               padding: 10px 12px; margin-top: 10px; }
+  .cand-card { background: var(--near-black); border: 1px solid var(--border); border-radius: 6px;
+               padding: 12px 14px; margin-top: 10px; }
   .cand-card .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-  .cand-card .name { font-weight: 600; font-size: 13px; }
-  .cand-card .meta { font-size: 11px; color: #9aa7b4; font-variant-numeric: tabular-nums; }
-  .cand-card .stt {
-    margin: 8px 0; padding: 8px; background: #161b22; border-radius: 6px;
-    font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap;
+  .cand-card .name {
+    font: 700 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--heading);
   }
-  .cand-card .stt.empty { color: #6e7681; font-style: italic; }
-  .cand-card .err { color: #f85149; font-size: 12px; margin: 6px 0; }
-  .cand-card audio { width: 100%; height: 32px; margin-top: 6px; }
-  .cand-card .dl { font-size: 11px; }
-  a { color: #58a6ff; }
+  .cand-card .meta { font: 11px/1.55 var(--mono); color: var(--body-subtle); font-variant-numeric: tabular-nums; }
+  .cand-card .meta b { color: var(--body); font-weight: 500; }
+  .cand-card .stt {
+    margin: 9px 0; padding: 10px 11px; background: var(--deep);
+    border: 1px solid var(--border); border-radius: 6px; color: var(--heading);
+    font: 12px/1.6 var(--mono); white-space: pre-wrap;
+  }
+  .cand-card .stt.empty { color: var(--body-subtle); font-style: italic; }
+  .cand-card .err { color: var(--danger-strong); font: 11px/1.5 var(--mono); margin: 7px 0; }
+  /* the one control the browser draws for us. Thirty-five stacked native players
+     are the brightest thing on a near-black page, so they sit back until the
+     pointer is on the card that owns them. */
+  .cand-card audio { width: 100%; height: 34px; margin-top: 8px; opacity: .62; transition: opacity .16s; }
+  .cand-card:hover audio, .cand-card audio:hover, .cand-card audio:focus-within { opacity: 1; }
+  audio::-webkit-media-controls-enclosure { border-radius: 6px; }
+  audio::-webkit-media-controls-panel { background: var(--card-soft); }
+  audio::-webkit-media-controls-current-time-display,
+  audio::-webkit-media-controls-time-remaining-display { color: var(--body); }
+  .cand-card .dl { font: 11px/1.5 var(--mono); margin-top: 4px; }
+  /* the wells that quote a run back at you: script, VAD params, transcripts */
+  .well { background: var(--deep); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+  .cap { font: 500 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+         color: var(--body-subtle); margin-bottom: 5px; }
+  .cap .note { text-transform: none; letter-spacing: .02em; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .vadfield { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--body-subtle); }
 
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #21262d; font-variant-numeric: tabular-nums; }
-  th { color: #6e7681; font-weight: 600; }
-  tr.run { cursor: pointer; }
-  tr.rank { cursor: pointer; }
-  tr.rank:hover td { background: #1c2430; }
-  tr.run:hover td { background: #161b22; }
-  tr.run.sel td { background: #1c2430; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border);
+           font-variant-numeric: tabular-nums; }
+  th { font: 500 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+       color: var(--body-subtle); }
+  td { color: var(--body); }
+  tr.run, tr.rank { cursor: pointer; }
+  tr.rank:hover td { background: var(--card-soft); color: var(--heading); }
+  tr.run:hover td { background: var(--card-soft); }
+  tr.run.sel td { background: var(--hover-fill); color: var(--heading); }
+  tr.run.sel td:first-child { box-shadow: inset 2px 0 0 var(--brand); }
   .spin { display: inline-block; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* the candidate list outgrows the viewport at 35 models; scroll it rather than
+     let the sticky sidebar become taller than the screen and stop sticking */
+  #candList { max-height: 38vh; overflow-y: auto; margin-right: -4px; padding-right: 4px; }
+  /* nowrap or "0.14 s" breaks after the number and the row goes double-height,
+     which pulls every column out of line with its neighbours */
+  #rankings table td { padding: 5px 7px; white-space: nowrap; }
+  /* below ~1100px the run/status/delete columns fall off the right edge; scroll
+     the table instead of clipping the one button that deletes a run */
+  #histBox { overflow-x: auto; }
+  #histBox table { min-width: 720px; }
+  #histBox td:first-child, #histBox th:first-child { white-space: nowrap; }
+  #rankings .catlabel { font: 500 10px/1.4 var(--mono); letter-spacing: .1em;
+                        text-transform: uppercase; color: var(--body); margin-bottom: 5px; }
 
   /* jump rail: the page is one long column and the sections that matter are far
      apart once a run has 35 candidate cards between them */
   nav.rail {
-    flex: 0 0 38px; position: sticky; top: 54px;
+    flex: 0 0 40px; position: sticky; top: 68px;
     display: flex; flex-direction: column; gap: 6px; align-items: center;
   }
   nav.rail button {
-    width: 38px; height: 38px; padding: 0; font-size: 15px; line-height: 1;
-    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; padding: 0; font-size: 14px; line-height: 1;
   }
 </style>
 </head>
@@ -110,16 +254,15 @@
   <span id="pillState" class="pill">idle</span>
   <span id="pillRoom" class="pill">room: —</span>
   <span id="pillTimer" class="pill">rec: —</span>
+  <span id="status"></span>
   <span style="flex:1"></span>
-  <span id="exportWrap">
-    <select id="expFmt" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
-      border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace">
+  <span id="exportWrap" class="row">
+    <select id="expFmt">
       <option value="m4a">compact audio (aac)</option>
       <option value="wav">exact audio (wav)</option>
     </select>
     <button id="btnExport" class="mini" title="every run as one zip: a viewer html plus all the audio">⬇ export all runs</button>
   </span>
-  <span id="status"></span>
 </header>
 
 <div class="layout">
@@ -131,10 +274,9 @@
     </div>
     <div class="hint" id="runHint">Start = arm the source and record the subscriber.
       Stop = end recording; every ticked candidate then runs (NC → STT).</div>
-    <div class="field" style="flex-direction:row;align-items:center;gap:8px;margin-top:10px">
+    <div class="field" style="flex-direction:row;align-items:center;gap:8px;margin-top:14px">
       <label for="conc" style="flex:1">Concurrent processing</label>
-      <select id="conc" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
-        border-radius:6px;padding:3px 6px;font:11px ui-monospace,Menlo,monospace"></select>
+      <select id="conc"></select>
     </div>
     <div class="hint" id="concHint" style="margin-top:6px"></div>
   </div>
@@ -150,7 +292,7 @@
     <div class="hint" id="srcHint">Phone: press Start and your phone rings
       (<code>LK_SIP_CALL_TO</code> over <code>LK_SIP_TRUNK_ID</code>). Pick up and talk.
       Hanging up ends the run exactly like pressing Stop.</div>
-    <div class="hint" id="agentHint" style="color:#6e7681"></div>
+    <div class="hint" id="agentHint"></div>
     <div class="field" id="uploadField" style="display:none">
       <label>Audio file (wav/mp3/m4a/ogg/flac — anything ffmpeg reads)</label>
       <input type="file" id="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aac,.opus,.webm" />
@@ -159,15 +301,15 @@
 
   <div class="box">
     <h2>Reference script (optional)</h2>
-    <textarea id="script" placeholder="Type/paste exactly what will be (or was) said. If set, each candidate gets a real WER score against it."
-      style="width:100%;min-height:64px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,monospace;resize:vertical"></textarea>
+    <textarea id="script" style="min-height:66px"
+      placeholder="Type/paste exactly what will be (or was) said. If set, each candidate gets a real WER score against it."></textarea>
     <div class="hint">Best used with a scripted test call — read this text during the recording.</div>
   </div>
 
   <div class="box">
     <h2>Run notes (optional)</h2>
-    <textarea id="note" placeholder="Conditions worth remembering when you revisit this run: &quot;someone talking beside me&quot;, &quot;speakerphone at arm's length&quot;, &quot;quiet room&quot;."
-      style="width:100%;min-height:44px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,monospace;resize:vertical"></textarea>
+    <textarea id="note" style="min-height:46px"
+      placeholder="Conditions worth remembering when you revisit this run: &quot;someone talking beside me&quot;, &quot;speakerphone at arm's length&quot;, &quot;quiet room&quot;."></textarea>
     <div class="hint">Kept out of the reference script on purpose — describing the room
       in there would be scored as words you failed to say. Shows in history, and stays
       editable once the run is loaded.</div>
@@ -184,18 +326,16 @@
 
 <main>
   <div class="box" id="tlBox">
-    <h2 style="display:flex;align-items:center;justify-content:space-between"><span id="tlTitle">Subscriber timeline</span>
-      <span style="text-transform:none;letter-spacing:0;font-weight:400">
-        <label for="waveScale" style="color:#6e7681">wave scale</label>
-        <select id="waveScale" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
-          border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace"></select>
-        <label for="waveHeight" style="color:#6e7681;margin-left:8px">height</label>
-        <select id="waveHeight" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;
-          border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace"></select>
-        <label for="vadShow" style="color:#6e7681;margin-left:8px;cursor:pointer"
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span id="tlTitle">Subscriber timeline</span>
+      <span class="h2tools">
+        <label for="waveScale">wave scale</label>
+        <select id="waveScale"></select>
+        <label for="waveHeight" style="margin-left:4px">height</label>
+        <select id="waveHeight"></select>
+        <label for="vadShow" style="margin-left:4px"
           title="Silero VAD spans — the turns production would cut and send to STT">
           <input type="checkbox" id="vadShow" checked style="vertical-align:-1px" /> VAD</label>
-        <label for="vadSnap" style="color:#6e7681;margin-left:8px;cursor:pointer"
+        <label for="vadSnap"
           title="clicks on a waveform snap to the nearest VAD span edge, so playback starts exactly where the VAD opened or closed a turn">
           <input type="checkbox" id="vadSnap" style="vertical-align:-1px" /> snap</label>
       </span></h2>
@@ -206,44 +346,43 @@
   </div>
 
   <div class="box" id="resultsBox">
-    <h2>Results <span id="resRun" style="text-transform:none;color:#9aa7b4"></span>
-      <button id="btnReproc" class="mini" style="display:none;margin-left:8px"
+    <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">Results
+      <span id="resRun" class="h2tools"></span>
+      <button id="btnReproc" class="mini" style="display:none"
         title="re-run this run's stored input.wav through whatever is ticked in the sidebar">↻ re-run ticked candidates</button>
-      <select id="werMode" style="display:none;margin-left:8px;background:#0d1117;color:#e6edf3;
-        border:1px solid #30363d;border-radius:5px;padding:2px 5px;font:10px ui-monospace,Menlo,monospace"
+      <select id="werMode" style="display:none"
         title="which transcript + WER the cards and rankings show — the audio and waveform stay the full NC output either way">
         <option value="seg">WER: ✂ VAD-cut (production-real)</option>
         <option value="whole">WER: whole-file</option>
       </select></h2>
-    <div id="noteEdit" style="display:none;gap:6px;margin-bottom:8px">
-      <input id="runNote" placeholder="note for this run — what were the conditions?"
-        style="flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:5px 8px;font:11px/1.5 ui-monospace,Menlo,monospace" />
+    <div id="noteEdit" class="row" style="display:none;margin-bottom:10px">
+      <input type="text" id="runNote" style="flex:1"
+        placeholder="note for this run — what were the conditions?" />
       <button id="btnNote" class="mini">save note</button>
     </div>
     <!-- the script this run was actually scored against. Every WER on the cards
          below is relative to this exact text, so revisiting a run without it
          means the numbers cannot be interpreted. -->
-    <div id="scriptUsed" style="display:none;margin-bottom:10px">
-      <div style="font-size:11px;color:#6e7681;margin-bottom:3px">
-        Reference script used for this run <span id="scriptUsedWords"></span></div>
-      <div id="scriptUsedText" style="background:#0d1117;border:1px solid #30363d;
-        border-radius:6px;padding:7px 9px;font:12px/1.55 ui-monospace,Menlo,monospace;
-        white-space:pre-wrap;color:#e6edf3"></div>
+    <div id="scriptUsed" style="display:none;margin-bottom:12px">
+      <div class="cap">Reference script used for this run
+        <span id="scriptUsedWords" class="note"></span></div>
+      <div id="scriptUsedText" class="well"
+        style="font:12px/1.6 var(--mono);white-space:pre-wrap;color:var(--heading)"></div>
     </div>
     <!-- The thresholds that produced THIS run's green spans. Saved per run, so a
          history re-run at different settings is visible here instead of quietly
          making two runs' spans incomparable. -->
-    <div id="vadBar" style="display:none;margin-bottom:10px">
-      <div style="font-size:11px;color:#6e7681;margin-bottom:3px">
-        Silero VAD thresholds used for this run <span id="vadBarNote"></span></div>
-      <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px">
-        <div id="vadFields" style="display:flex;flex-wrap:wrap;gap:4px 14px"></div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+    <div id="vadBar" style="display:none;margin-bottom:12px">
+      <div class="cap">Silero VAD thresholds used for this run
+        <span id="vadBarNote" class="note"></span></div>
+      <div class="well">
+        <div id="vadFields" style="display:flex;flex-wrap:wrap;gap:8px 16px"></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap">
           <button id="btnVad" class="mini">↻ re-run VAD on this run</button>
           <button id="btnSeg" class="mini" title="cut each candidate's audio at its own
             VAD spans, one STT request per turn — how production actually feeds the STT.
             Speech the VAD missed is never transcribed, so WER becomes production-real.">✂ STT by VAD turns</button>
-          <span class="hint" style="margin:0">Same model and state machine ai-handler
+          <span class="hint" style="margin:0;flex:1 1 260px">Same model and state machine ai-handler
             runs. Production cuts the call into turns with this and sends <b>one turn
             per STT request</b> — the green spans are what each candidate leaves for
             the recogniser. Re-running touches nothing but the spans.</span>
@@ -254,7 +393,7 @@
   </div>
 
   <div class="box" id="rankBox">
-    <h2>Rankings <span id="rankRun" style="text-transform:none;color:#6e7681">— within one run, never across runs</span></h2>
+    <h2>Rankings <span id="rankRun" class="h2tools">— within one run, never across runs</span></h2>
     <div id="rankings" class="hint">No run selected.</div>
   </div>
 
@@ -287,6 +426,24 @@ const EX = window.NC_EXPORT || null;
 // notes are free text going into innerHTML and a title="" attribute
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// A canvas cannot read CSS custom properties, so the design tokens the waveforms
+// need are repeated here. Keep in sync with :root above.
+const C = {
+  deep: "#0a0a0a",
+  wave: "#f79f79",          // the signal itself — the one thing the eye should find
+  clip: "#f43f5e",          // columns cut off by the current height
+  playing: "#f0ede6",       // playhead, moving
+  paused: "#8a8781",        // playhead, parked
+  readout: "#c5c2bb",
+  caption: "#8a8781",
+  vadFill: "rgba(34,197,94,0.15)",
+  vadEdge: "rgba(34,197,94,0.60)",
+  truth: "rgba(245,158,11,0.85)",
+  truthDrag: "rgba(245,158,11,0.45)",
+  truthWash: "rgba(245,158,11,0.12)",
+};
+const MONO_CV = "'Chivo Mono', ui-monospace, Menlo, monospace";
 const state = {
   phase: "idle",          // idle | armed | recording | processing
   levels: [],             // {t, rms, peak}
@@ -368,7 +525,9 @@ async function loadCandidates() {
   const combos = state.candidates.filter(isCombo);
   const addDivider = () => {
     const hr = document.createElement("div");
-    hr.style.cssText = "border-top:1px solid #30363d; margin:10px 0 4px;";
+    hr.className = "lbl";
+    hr.style.cssText = "border-top:1px solid var(--border);margin:12px 0 2px;padding-top:8px";
+    hr.textContent = "chains";
     div.appendChild(hr);
   };
   for (const c of [...singles, null, ...combos]) {
@@ -460,29 +619,25 @@ function renderVadFields(values, limits) {
     const lim = (limits || {})[k] || [0, 1];
     const v = values[k];
     if (ro) {
-      return `<span class="meta" title="${esc(why)}">${label}
-        <b style="color:#e6edf3">${v ?? "—"}</b></span>`;
+      return `<span class="vadfield" title="${esc(why)}">${label}
+        <b style="color:var(--heading)">${v ?? "—"}</b></span>`;
     }
-    return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#9aa7b4">
+    return `<span class="vadfield">
       <label for="vad-${k}" title="${esc(why)}">${label}</label>
-      <input type="number" id="vad-${k}" value="${v ?? ""}" step="0.01"
-        min="${lim[0]}" max="${lim[1]}" title="${esc(why)} · allowed ${lim[0]}–${lim[1]}"
-        style="width:62px;background:#161b22;color:#e6edf3;border:1px solid #30363d;
-        border-radius:5px;padding:2px 5px;font:11px ui-monospace,Menlo,monospace" />
+      <input type="number" class="num" id="vad-${k}" value="${v ?? ""}" step="0.01"
+        min="${lim[0]}" max="${lim[1]}" title="${esc(why)} · allowed ${lim[0]}–${lim[1]}" />
     </span>`;
   });
   const sr = values.sample_rate;
   if (ro) {
-    fields.push(`<span class="meta" title="${esc(RATE_WHY)}">rate
-      <b style="color:#e6edf3">${sr ? rateLabel(sr) : "—"}</b></span>`);
+    fields.push(`<span class="vadfield" title="${esc(RATE_WHY)}">rate
+      <b style="color:var(--heading)">${sr ? rateLabel(sr) : "—"}</b></span>`);
   } else {
     const opts = (state.vadRates || [8000, 16000]).map((hz) =>
       `<option value="${hz}"${+sr === hz ? " selected" : ""}>${rateLabel(hz)}</option>`).join("");
-    fields.push(`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#9aa7b4">
+    fields.push(`<span class="vadfield">
       <label for="vad-sample_rate" title="${esc(RATE_WHY)}">rate</label>
-      <select id="vad-sample_rate" title="${esc(RATE_WHY)}"
-        style="background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:5px;
-        padding:2px 5px;font:11px ui-monospace,Menlo,monospace">${opts}</select>
+      <select id="vad-sample_rate" title="${esc(RATE_WHY)}">${opts}</select>
     </span>`);
   }
   $("vadFields").innerHTML = fields.join("");
@@ -519,8 +674,8 @@ function showVadBar(meta) {
   $("vadBar").style.display = "";
   renderVadFields(saved || expected, state.vadLimits);
 
-  const amber = (t) => `<span style="color:#d29922">${t}</span>`;
-  const grey = (t) => `<span style="color:#6e7681">${t}</span>`;
+  const amber = (t) => `<span style="color:var(--fg-warning)">${t}</span>`;
+  const grey = (t) => `<span style="color:var(--body-subtle)">${t}</span>`;
   const notes = [];
   if (!saved) {
     notes.push(amber("none saved yet; showing this source's defaults — re-run to measure"));
@@ -677,11 +832,23 @@ function sizeCanvas(cv, baseCss, mul) {
   return cv.height;
 }
 
+// Captions are drawn ON the signal, and at high gain the signal fills the canvas
+// — so they get a plate. Otherwise the one line telling you the view is clipping
+// becomes unreadable exactly when it matters. Size is passed, not parsed off
+// ctx.font: a weighted font string ("500 20px …") parses to the weight.
+function plated(ctx, text, x, baseline, size, color) {
+  const w = ctx.measureText(text).width;
+  ctx.fillStyle = "rgba(10,10,10,0.78)";
+  ctx.fillRect(x - 6, baseline - size, w + 12, size + 8);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, baseline);
+}
+
 function drawTimeline() {
   const mul = effMul();
   sizeCanvas(tl, REF_HALF_TL, mul);
   const W = tl.width, H = tl.height, mid = H / 2;
-  tctx.fillStyle = "#010409"; tctx.fillRect(0, 0, W, H);
+  tctx.fillStyle = C.deep; tctx.fillRect(0, 0, W, H);
   const n = Math.floor(W / WIN_PX);
   const win = state.levels.slice(-n);
   let clipped = 0;
@@ -690,17 +857,18 @@ function drawTimeline() {
     const px = waveGainPx(l.rms / 32768, REF_HALF_TL, mul, 6) * 2;  // backing store is 2x
     const h = Math.max(1, Math.min(px, mid));
     if (px > mid) clipped++;
-    tctx.fillStyle = px > mid ? "#f85149" : "#3fb950";
+    tctx.fillStyle = px > mid ? C.clip : C.wave;
     tctx.fillRect(i * WIN_PX, mid - h, WIN_PX - 1, h * 2);
   });
   if (win.length) {
     const last = win[win.length - 1];
-    tctx.fillStyle = "#9aa7b4"; tctx.font = "20px ui-monospace";
+    tctx.font = "500 20px " + MONO_CV;
     const db = 20 * Math.log10(Math.max(last.rms / 32768, 1e-9));
-    tctx.fillText(`t=${last.t.toFixed(1)}s  rms=${last.rms} (${db.toFixed(1)} dBFS)`, 10, 24);
+    plated(tctx, `t=${last.t.toFixed(1)}s  rms=${last.rms} (${db.toFixed(1)} dBFS)`,
+           12, 28, 20, C.readout);
   }
-  tctx.fillStyle = "#6e7681"; tctx.font = "16px ui-monospace";
-  tctx.fillText(scaleCaption(clipped, mul), 10, H - 8);
+  tctx.font = "16px " + MONO_CV;
+  plated(tctx, scaleCaption(clipped, mul), 12, H - 10, 16, C.caption);
 }
 
 // Clipping is called out rather than left to look like a loud passage — and the
@@ -1003,7 +1171,7 @@ function renderCandidateCard(runId, e) {
     if (st) {
       const t = st.text || "";
       const seg = useSeg
-        ? ` · <span style="color:#d29922">✂ ${st.turns} turn${st.turns === 1 ? "" : "s"} (VAD-cut)</span>` : "";
+        ? ` · <span style="color:var(--fg-warning)">✂ ${st.turns} turn${st.turns === 1 ? "" : "s"} (VAD-cut)</span>` : "";
       html += `<div class="stt ${t ? "" : "empty"}">${t || "(empty transcript)"}</div>
         <div class="meta">lang: ${st.language ?? "—"} · confidence: ${st.confidence ?? "—"}${seg}
         ${e.output && !useSeg ? sttBtn(e.id) : ""}</div>`;
@@ -1068,7 +1236,8 @@ function vadLine(v, err, base) {
   let d = "";
   if (base && base !== v && base.duration_s) {
     const ds = v.speech_s - base.speech_s, dn = v.n - base.n;
-    const col = Math.abs(ds) < 0.05 && dn === 0 ? "#6e7681" : ds < 0 ? "#e06c75" : "#4ec9b0";
+    const col = Math.abs(ds) < 0.05 && dn === 0 ? "var(--body-subtle)"
+      : ds < 0 ? "var(--danger-strong)" : "var(--success-strong)";
     d = ` <span style="color:${col}">· Δ vs no-NC ${ds >= 0 ? "+" : "−"}${Math.abs(ds).toFixed(2)} s,
           ${dn >= 0 ? "+" : "−"}${Math.abs(dn)} span${Math.abs(dn) === 1 ? "" : "s"}</span>`;
   }
@@ -1086,7 +1255,7 @@ function bandLabel(hz, fileRate) {
     : "full-band — real mic capture";
   const note = capped ? ` (up to the file's own ${(fileRate / 1000).toFixed(0)} kHz ceiling)` : "";
   const warn = hz >= 4600
-    ? ' <span style="color:#d29922">· narrowband models are handicapped here — downsampling to 8 kHz throws away real speech</span>'
+    ? ' <span style="color:var(--fg-warning)">· narrowband models are handicapped here — downsampling to 8 kHz throws away real speech</span>'
     : "";
   return `<b>measured band</b> ${(hz / 1000).toFixed(1)} kHz${note} · ${kind}${warn}`;
 }
@@ -1188,7 +1357,7 @@ function paintWave(canvasId) {
   sizeCanvas(cv, REF_HALF_WAVE, mul);
   const ctx = cv.getContext("2d");
   const W = cv.width, H = cv.height, mid = H / 2;
-  ctx.fillStyle = "#010409"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = C.deep; ctx.fillRect(0, 0, W, H);
   paintVad(ctx, canvasId, W, H);
   paintTruth(ctx, canvasId, W, H);
   // in dB mode the sign is meaningless (log of |a|), so draw a symmetric
@@ -1207,17 +1376,18 @@ function paintWave(canvasId) {
     const over = up > mid || dn > mid;
     if (over) clipped++;
     up = Math.min(up, mid); dn = Math.min(dn, mid);
-    ctx.fillStyle = over ? "#f85149" : "#58a6ff";
+    ctx.fillStyle = over ? C.clip : C.wave;
     ctx.fillRect(x, mid - up, 1, Math.max(1, up + dn));
   }
-  ctx.fillStyle = "#6e7681"; ctx.font = "16px ui-monospace";
-  ctx.fillText(scaleCaption(clipped, mul), 8, 18);
+  // bottom-left, not top: the hand-marked speech ribbon owns the top edge
+  ctx.font = "16px " + MONO_CV;
+  plated(ctx, scaleCaption(clipped, mul), 10, H - 8, 16, C.caption);
 
   // playhead, so you can see which part of the waveform you are hearing
   const audio = waveAudio(cv);
   if (audio && audio.duration > 0 && isFinite(audio.duration) && audio.currentTime > 0) {
     const x = (audio.currentTime / audio.duration) * W;
-    ctx.fillStyle = audio.paused ? "#9aa7b4" : "#f0883e";
+    ctx.fillStyle = audio.paused ? C.paused : C.playing;
     ctx.fillRect(Math.min(x, W - 3), 0, 3, H);
   }
 }
@@ -1235,10 +1405,10 @@ function paintVad(ctx, canvasId, W, H) {
     const x0 = Math.max(0, (s / v.duration_s) * W);
     const x1 = Math.min(W, (e / v.duration_s) * W);
     if (x1 <= x0) continue;
-    ctx.fillStyle = "rgba(63,185,80,0.16)";
+    ctx.fillStyle = C.vadFill;
     ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
     // edges, so two spans separated by a short pause don't read as one
-    ctx.fillStyle = "rgba(63,185,80,0.55)";
+    ctx.fillStyle = C.vadEdge;
     ctx.fillRect(x0, 0, 1, H);
     ctx.fillRect(Math.max(x0, x1 - 1), 0, 1, H);
   }
@@ -1258,14 +1428,14 @@ function paintTruth(ctx, canvasId, W, H) {
     ctx.fillStyle = fill;
     ctx.fillRect(x0, 0, Math.max(1, x1 - x0), bar);
   };
-  for (const [s, e] of state.truth) band(s, e, "rgba(210,153,34,0.85)");
+  for (const [s, e] of state.truth) band(s, e, C.truth);
   // the drag in flight, on the canvas being dragged only
   if (state.drag && state.drag.cv.id === canvasId) {
     const a = Math.min(state.drag.from, state.drag.to) * dur;
     const b = Math.max(state.drag.from, state.drag.to) * dur;
-    band(a, b, "rgba(210,153,34,0.45)");
+    band(a, b, C.truthDrag);
     const x0 = (a / dur) * W, x1 = (b / dur) * W;
-    ctx.fillStyle = "rgba(210,153,34,0.12)";
+    ctx.fillStyle = C.truthWash;
     ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
   }
 }
@@ -1388,7 +1558,7 @@ function renderMarkBar() {
     (${cov.toFixed(0)}% of the call)</span>`;
   if (EX) {   // no server to save to; show what was marked and nothing else
     bar.innerHTML = state.truth.length
-      ? `<span class="meta" style="color:#d29922">✎ marked speech</span> ${summary}`
+      ? `<span class="meta" style="color:var(--fg-warning)">✎ marked speech</span> ${summary}`
       : "";
     return;
   }
@@ -1500,7 +1670,8 @@ async function loadRun(runId) {
 // (scripts/check_truth_score.py), which JS in a <script> tag would not get.
 function truthLine(t) {
   if (!t) return "";
-  const col = t.agree >= 0.9 ? "#4ec9b0" : t.agree >= 0.75 ? "#d29922" : "#e06c75";
+  const col = t.agree >= 0.9 ? "var(--success-strong)"
+    : t.agree >= 0.75 ? "var(--fg-warning)" : "var(--danger-strong)";
   return `<div class="meta"><b>vs my marks</b>
     <span style="color:${col}">${(t.agree * 100).toFixed(1)}% agree</span>
     · missed <b>${t.miss_s.toFixed(2)} s</b> of my speech
@@ -1551,23 +1722,25 @@ function renderRankings(runId, meta) {
     if (rows.length < 2) continue;
     any = true;
     const box = document.createElement("div");
-    let html = `<div style="font-size:11px;color:#9aa7b4;margin-bottom:4px"><b>${cat.label}</b> ${cat.higher ? "↑" : "↓"}`;
-    html += control ? ` <span style="color:#6e7681">· Δ vs no-NC</span>` : "";
+    let html = `<div class="catlabel">${cat.label} ${cat.higher ? "↑" : "↓"}`;
+    html += control ? ` <span style="color:var(--body-subtle)">· Δ vs no-NC</span>` : "";
     html += `</div><table>`;
     html += rows.map((r, i) => {
       let delta = "";
       if (base != null && isFinite(base) && r.id !== "none") {
         const d = r.v - base;
         const good = cat.higher ? d > 0 : d < 0;
-        const col = Math.abs(d) < 1e-9 ? "#6e7681" : good ? "#4ec9b0" : "#e06c75";
+        const col = Math.abs(d) < 1e-9 ? "var(--body-subtle)"
+          : good ? "var(--success-strong)" : "var(--danger-strong)";
         delta = `<span style="color:${col}">${d >= 0 ? "+" : "−"}${cat.fmt(Math.abs(d))}</span>`;
       }
-      const col2 = r.id === "none" ? "#6e7681" : "#58a6ff";
+      const col2 = r.id === "none" ? "var(--body-subtle)" : "var(--brand)";
       return `<tr class="rank" data-cand="${esc(r.id)}" title="jump to ${esc(r.id)}">` +
-        `<td style="color:#6e7681">${i + 1}</td>` +
-        `<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;color:${col2}">${esc(r.id)}</td>` +
-        `<td style="text-align:right">${cat.fmt(r.v)}</td>` +
-        `<td style="text-align:right">${delta}</td></tr>`;
+        `<td style="color:var(--body-subtle)">${i + 1}</td>` +
+        `<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;` +
+          `font-family:var(--mono);font-size:11px;color:${col2}">${esc(r.id)}</td>` +
+        `<td style="text-align:right;font-family:var(--mono);color:var(--heading)">${cat.fmt(r.v)}</td>` +
+        `<td style="text-align:right;font-family:var(--mono);font-size:11px">${delta}</td></tr>`;
     }).join("");
     box.innerHTML = html + "</table>";
     // click a ranked model -> scroll to its card (and its audio player)
@@ -1592,16 +1765,15 @@ function showScriptUsed(script) {
     // deciding whether a WER gap between two candidates means anything
     $("scriptUsedWords").textContent =
       `· ${words} words, so one word = ${(100 / words).toFixed(1)}% WER`;
-    $("scriptUsedWords").style.color = "#6e7681";
     $("scriptUsedText").textContent = s;
   } else {
     $("scriptUsedWords").textContent = "";
     $("scriptUsedText").textContent =
       "(none set for this run — candidates have no WER, only transcripts)";
-    $("scriptUsedText").style.color = "#6e7681";
+    $("scriptUsedText").style.color = "var(--body-subtle)";
     return;
   }
-  $("scriptUsedText").style.color = "#e6edf3";
+  $("scriptUsedText").style.color = "var(--heading)";
 }
 
 // The header is sticky, so scrollIntoView({block:"start"}) tucks the heading you
@@ -1621,7 +1793,7 @@ document.querySelector("nav.rail").addEventListener("click", (ev) => {
 // boxes leaves you unsure whether anything happened.
 function flash(el) {
   el.style.transition = "outline-color .25s";
-  el.style.outline = "2px solid #58a6ff";
+  el.style.outline = "2px solid var(--brand)";
   setTimeout(() => { el.style.outlineColor = "transparent"; }, 900);
   setTimeout(() => { el.style.outline = ""; }, 1300);
 }
@@ -1643,12 +1815,15 @@ async function loadHistory() {
     tr.className = "run"; tr.dataset.id = r.id;
     const dur = r.input && r.input.duration_s != null ? r.input.duration_s + "s" : "—";
     const cands = (r.candidates || []).map((c) => c.id).join(", ") || "—";
-    tr.innerHTML = `<td>${r.id}</td><td>${r.source}</td><td>${dur}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;color:#9aa7b4"
+    tr.innerHTML = `<td style="font-family:var(--mono);font-size:11px;color:var(--heading)">${r.id}</td>
+      <td style="font-family:var(--mono);font-size:11px">${r.source}</td>
+      <td style="font-family:var(--mono);font-size:11px">${dur}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--body-subtle)"
           title="${esc(r.note || "")}">${esc(r.note || "—")}</td>
-      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${cands}</td>
-      <td>${r.status}${(r.candidates || []).some((c) => c.stt_seg)
-        ? ' <span style="color:#d29922" title="has VAD-cut transcripts: one STT request per turn, production-real WER">✂</span>' : ""}</td>`
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+          font-family:var(--mono);font-size:11px;color:var(--body-subtle)">${cands}</td>
+      <td style="font-family:var(--mono);font-size:11px">${r.status}${(r.candidates || []).some((c) => c.stt_seg)
+        ? ' <span style="color:var(--fg-warning)" title="has VAD-cut transcripts: one STT request per turn, production-real WER">✂</span>' : ""}</td>`
       + (EX ? "" : `<td style="text-align:right"><button class="mini danger"
            data-del="${esc(r.id)}" title="delete this run and its audio">✕</button></td>`);
     tr.onclick = () => loadRun(r.id);
@@ -1716,7 +1891,7 @@ function initLive() {
     el.textContent = c.worker_alive
       ? `recorder registered as agent "${c.agent_name}"`
       : `⚠ agent worker is NOT running — nothing will be recorded`;
-    if (!c.worker_alive) el.style.color = "#e06c75";
+    if (!c.worker_alive) el.style.color = "var(--danger-strong)";
     const sel = $("conc");
     sel.innerHTML = (c.concurrency_choices || [1, 2, 4]).map((n) =>
       `<option value="${n}"${n === c.concurrency_default ? " selected" : ""}>${n}</option>`).join("");
@@ -1757,13 +1932,15 @@ function initExport() {
   $("pillState").remove(); $("pillRoom").remove(); $("pillTimer").remove();
   const banner = document.createElement("div");
   banner.className = "box";
-  banner.style.cssText = "margin:14px 16px 0;border-color:#1f6feb";
-  banner.innerHTML = `<b>NC Bench export</b> — ${EX.runs.length} runs, generated
+  banner.style.cssText = "margin:16px 20px 0;border-color:var(--brand-soft);"
+    + "background:#f79f790d;font-size:12px";
+  banner.innerHTML = `<span class="lbl" style="color:var(--brand)">NC Bench export</span>
+    <div style="margin-top:6px">${EX.runs.length} runs, generated
     ${esc(EX.generated_at)}. Read-only snapshot: ${esc(EX.audio_note)}.` +
     ((EX.skipped || []).length
-      ? ` <span style="color:#d29922">${EX.skipped.length} file(s) could not be
+      ? ` <span style="color:var(--fg-warning)">${EX.skipped.length} file(s) could not be
           encoded and have no player.</span>`
-      : "");
+      : "") + `</div>`;
   document.querySelector(".layout").before(banner);
   document.title = "NC Bench export — " + EX.generated_at;
   loadHistory();
