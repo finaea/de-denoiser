@@ -272,6 +272,52 @@ cloud rails — lead here, and `hecttor-crest2` goes 7W/1L. On web the sign fina
 flips: `hecttor-coda-vi-w075` is 5W/0L with a worst case of exactly 0.000, where
 whole-file it never won a single run.
 
+### Split experiment: one model gates the VAD, another feeds the STT
+
+*Added 2026-08-05 · `scripts/exp_split_vad_stt.py` — read-only over the stored
+runs: turn spans come from the GATE candidate's stored VAD measurement, the audio
+cut at those spans comes from the READ candidate's stored output, scored with the
+same turn-by-turn STT as `wer_seg`, so pairs compare directly with every
+self-gated row above. The gate's misses are inherited by construction: a turn the
+gate never opens is never transcribed.*
+
+ΔWER vs the segmented passthrough, median-ranked as above:
+
+| pair (gate → read) | n | median | mean | worst | W/L |
+|---|---|---|---|---|---|
+| **phone** `hush → none (raw)` | 9 | **−0.063** | −0.498 | +0.069 | **7/2** |
+| phone `gtcrn+hush → dpdfnet2-8k` | 9 | −0.054 | −0.465 | +0.103 | 6/3 |
+| phone `hush → dpdfnet2-8k` | 9 | −0.030 | −0.459 | +0.103 | 5/3 |
+| phone `gtcrn+hush → dtln` | 9 | −0.027 | −0.434 | +0.188 | 5/3 |
+| **web** `hush-atten12 → none (raw)` | 8 | **−0.043** | −0.103 | +0.054 | **5/2** |
+| web `hush-atten12 → dtln` | 8 | +0.000 | −0.049 | +0.219 | 3/3 |
+| web `hush-atten12 → fastenhancer-l` | 8 | +0.000 | −0.071 | +0.135 | 3/2 |
+| web `gtcrn → none (raw)` | 8 | −0.015 | +0.250 | +1.818 | 4/3 |
+
+The winner on **both surfaces is the control pair: aggressive gate, RAW audio to
+the STT.** `hush → none` posts the best median, the best W/L (7/2) and the
+smallest worst-case of any free configuration measured in this report — better
+than every self-gated candidate and better than the same gate feeding an
+NC-cleaned reader. `hush-atten12 → none` does the same on web (5/2, worst-case
++0.054), where no self-gated free candidate managed a clean record.
+
+Two implications:
+
+1. **NC's measurable value in this stack is gating, not cleaning.** Suppression
+   decides *which audio exists* (phantom turns die, that was worth up to −4.0
+   WER on the noisiest run) — but for the audio that survives, the recogniser
+   prefers it untouched. Every reader that "cleaned" the turns scored worse than
+   raw.
+2. **The gate must still fit the surface.** `gtcrn → none` on web carries a
+   +1.818 catastrophe (its gate passed ten phantom turns on the noise-test web
+   call), and full-strength `hush` remains phone-only — the web gate has to be
+   the capped `hush-atten12`.
+
+Caveats as elsewhere: n = 8–9, medians quoted because the re-admitted noise-test
+run dominates every mean, and the split inherits the gate's missed speech
+(`hush` +0.76 s / `hush-atten12` +0.79 s vs raw), which WER against a read script
+underweights relative to a real conversation.
+
 ## The miss/agree inversion, and which to trust
 
 The web agreement leaders (`hecttor-coda-vi-w075`, `krisp-bvc`, `hecttor-coda`,
@@ -314,6 +360,11 @@ noise turns transcribe as junk. Under that measurement NC helps both surfaces:
 web" holds only for whole-call transcription, which production does not do; the
 production-shaped answer is that moderate suppression pays for itself by killing
 phantom turns.
+
+**Split gate/read (2026-08-05) is the strongest free configuration measured.**
+Gating the VAD with Hush while the STT reads raw audio beat every single-model
+setup on both surfaces (phone `hush → raw` 7W/2L, web `hush-atten12 → raw`
+5W/2L). NC earns its keep deciding what gets transcribed, not polishing it.
 
 **If one config must serve both surfaces:** `hecttor-coda-vi-w075` is the only
 candidate in the top-10 of both STT tables and both missed-speech tables (its
