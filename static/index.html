@@ -4,11 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>NC Bench</title>
-<!-- Pure's two faces. An exported zip opened offline just falls through to the
-     stacks below them, which is why every rule names the full stack. -->
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Chivo+Mono:wght@400;500;700&display=swap" />
+<!-- No webfonts: the system faces, as before the Pure restyle. An exported zip
+     is opened offline as often as not, and a run's numbers should not wait on
+     fonts.googleapis.com to decide what they look like. -->
 <style>
   :root {
     color-scheme: dark;
@@ -43,8 +41,8 @@
     --border: #2a2a31; --border-strong: #4d4c58;
     --focus-ring: 0 0 0 3px #ff7a1840;
     /* type */
-    --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-    --mono: "Chivo Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; }
   body {
@@ -85,8 +83,8 @@
      takes the panel's own --accent, so the four main panels read as four
      different things at a glance instead of four identical orange headings.
      Absolute so it survives the headings that are flex rows with a button. */
-  /* 700 not 500: Chivo Mono's 500 is barely separable from its 400 at these
-     sizes. And .07em not .12em — 12% of the em is enough tracking to stop a long
+  /* 700 not 500: the system mono has no 500, so it rounds to the 400 it already
+     was. And .07em not .12em — 12% of the em is enough tracking to stop a long
      label like "REFERENCE SCRIPT USED FOR THIS RUN" reading as a word at all. */
   h2 {
     margin: 0 0 9px; position: relative; padding-left: 15px;
@@ -610,7 +608,8 @@ const C = {
   truthDrag: "rgba(167,139,250,0.55)",
   truthWash: "rgba(167,139,250,0.13)",
 };
-const MONO_CV = "'Chivo Mono', ui-monospace, Menlo, monospace";
+// canvas has no CSS, so --mono is repeated here. Keep the two in sync.
+const MONO_CV = "ui-monospace, SFMono-Regular, Menlo, monospace";
 const state = {
   phase: "idle",          // idle | armed | recording | processing
   levels: [],             // {t, rms, peak}
