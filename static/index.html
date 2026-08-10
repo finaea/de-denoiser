@@ -534,8 +534,8 @@
           <button id="btnSeg" class="mini" title="cut each candidate's audio at its own
             VAD spans, one STT request per turn — how production actually feeds the STT.
             Speech the VAD missed is never transcribed, so WER becomes production-real.">✂ STT by VAD turns</button>
-          <span class="hint" style="margin:0;flex:1 1 260px">Same model and state machine ai-handler
-            runs. Production cuts the call into turns with this and sends <b>one turn
+          <span class="hint" style="margin:0;flex:1 1 260px">Same model and state machine a
+            livekit-agents pipeline runs. Production cuts the call into turns with this and sends <b>one turn
             per STT request</b> — the cyan spans are what each candidate leaves for
             the recogniser. Re-running touches nothing but the spans.</span>
         </div>
@@ -763,21 +763,21 @@ $("btnNote").onclick = async () => {
 };
 
 // --------------------------------------------------------------- vad panel
-// Seeded from .env (which mirrors ai-handler's production config) so the page
+// Seeded from .env (which should mirror your production config) so the page
 // opens showing what production would do; change a field and re-run to ask what
 // a different threshold would have done to every recording you already have.
 const VAD_FIELDS = [
   ["activation_threshold", "activation", "p(speech) that starts a span"],
   ["deactivation_threshold", "deactivation", "p(speech) below which it can end"],
-  ["min_speech_duration", "min speech (s)", "shorter blips are not a turn — ai-handler runs 0.12"],
-  ["min_silence_duration", "min silence (s)", "pause that ends a turn — ai-handler runs 0.55"],
+  ["min_speech_duration", "min speech (s)", "shorter blips are not a turn — the livekit-agents default is 0.12"],
+  ["min_silence_duration", "min silence (s)", "pause that ends a turn — the livekit-agents default is 0.55"],
   ["prefix_padding_duration", "prefix pad (s)", "back-dates a span's start"],
 ];
 // The rate is an enum, not a range: silero has real weights for exactly 8 k and
 // 16 k (different window/context per rate), so this is a select, not a number
 // box that could be nudged to 12000.
 const RATE_WHY = "silero inference rate — 8 k matches a narrowband phone leg, "
-  + "16 k a wideband mic. ai-handler pins 16 k for every source.";
+  + "16 k a wideband mic. Production typically pins 16 k for every source.";
 function rateLabel(hz) {
   return hz === 8000 ? "8 kHz (narrowband)" : hz === 16000 ? "16 kHz (wideband)" : hz + " Hz";
 }
@@ -852,13 +852,13 @@ function showVadBar(meta) {
     // against; claiming "these are the defaults" would be a guess
     notes.push(grey("as measured when this export was made"));
   } else {
-    // The rate is called out separately because ai-handler pins 16 kHz for every
+    // The rate is called out separately because production typically pins 16 kHz for every
     // source: anything else is a deliberate experiment, not a production mirror.
     // Both directions are worth saying — measured off this source's default is
     // just as surprising as measured off production's.
     if (+saved.sample_rate !== 16000) {
-      notes.push(amber(`${+saved.sample_rate / 1000} kHz inference — ai-handler pins
-        16 kHz, so these spans are an experiment, not what production would cut`));
+      notes.push(amber(`${+saved.sample_rate / 1000} kHz inference — production typically
+        pins 16 kHz, so these spans are an experiment, not what production would cut`));
     } else if (+expected.sample_rate !== 16000) {
       notes.push(grey(`16 kHz (production parity) — this source defaults to
         ${+expected.sample_rate / 1000} kHz; switch the rate and re-run to compare`));
@@ -869,7 +869,7 @@ function showVadBar(meta) {
         + "with a run measured at the defaults"));
     }
     if (!notes.length) notes.push(grey("the nc_bench defaults for this source (tighter "
-      + "than ai-handler: min speech 0.05 / min silence 0.40 vs 0.12 / 0.55)"));
+      + "than the livekit-agents defaults: min speech 0.05 / min silence 0.40 vs 0.12 / 0.55)"));
   }
   $("vadBarNote").innerHTML = "— " + notes.join(grey(" · "));
 }
@@ -1714,7 +1714,17 @@ function repaintAllWaves() {
   Object.keys(state.wavePeaks).forEach(paintWave);
   drawTimeline();
 }
-window.addEventListener("resize", () => { cvScale = null; });
+// A resize changes each canvas's CSS width but not its 1600 px backing store, so
+// the browser just stretches the last bitmap — captions included, which is how a
+// 10 px caption ends up looking like 16 px on a wider window. Invalidating the
+// scale is not enough; the canvases have to be redrawn at the new one. Debounced
+// because a drag-resize fires this continuously and there can be 36 of them.
+let resizeT = null;
+window.addEventListener("resize", () => {
+  cvScale = null;
+  clearTimeout(resizeT);
+  resizeT = setTimeout(repaintAllWaves, 120);
+});
 
 // ------------------------------------------------------- wave click / play
 // function, not const: paintWave above calls it, and a const would be in its
