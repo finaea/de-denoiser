@@ -19,12 +19,20 @@ dependencies = [
     "livekit-plugins-noise-cancellation==0.2.6",
     "livekit-plugins-ai-coustics>=0.3.0",
     "aic-sdk>=2.5.0",
-    "hecttor-sdk",
     "livekit-plugins-silero>=1.6.7",
 ]
 
-[tool.uv.sources]
-hecttor-sdk = { path = "vendor/hecttor_sdk-3.1.1-cp312-cp312-macosx_15_0_arm64.whl" }
+# Hecttor's SDK is deliberately absent from `dependencies`. It is proprietary,
+# it is not on PyPI, and it is not redistributed here — it ships as a
+# per-licensee wheel. It is not declared as an optional extra either: `uv lock`
+# resolves extras too, so a bare "hecttor-sdk" that exists in no index makes the
+# whole lock unsatisfiable. It is a manual, out-of-band install:
+#
+#   uv pip install /path/to/your/hecttor_sdk-<version>-<platform>.whl
+#
+# Without it hecttor_available() reports "hecttor_sdk wheel not installed in
+# this venv" and the UI greys those candidates out — the same path ai-coustics
+# already takes when AIC_LICENSE_KEY is unset. Everything else still runs.
 
 [tool.uv]
 package = false

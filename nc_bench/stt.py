@@ -1,4 +1,4 @@
-"""Local STT client — same /recognize protocol ai-handler's local_stt uses:
+"""STT client for a /recognize endpoint (WHISPER_URL):
 POST raw 16 kHz mono s16 WAV bytes, JSON {text, language, confidence} back."""
 
 from __future__ import annotations

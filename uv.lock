@@ -337,20 +337,6 @@ wheels = [
 ]
 
 [[package]]
-name = "hecttor-sdk"
-version = "3.1.1"
-source = { path = "vendor/hecttor_sdk-3.1.1-cp312-cp312-macosx_15_0_arm64.whl" }
-dependencies = [
-    { name = "numpy" },
-]
-wheels = [
-    { filename = "hecttor_sdk-3.1.1-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:6b8cf77c863047a71cb0b7c3274c5316786dd0b3dfa6753b2ab6381902070e3d" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=1.19.0" }]
-
-[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -665,7 +651,6 @@ dependencies = [
     { name = "aic-sdk" },
     { name = "aiohttp" },
     { name = "fastapi" },
-    { name = "hecttor-sdk" },
     { name = "livekit" },
     { name = "livekit-api" },
     { name = "livekit-plugins-ai-coustics" },
@@ -673,6 +658,7 @@ dependencies = [
     { name = "livekit-plugins-silero" },
     { name = "numpy" },
     { name = "onnxruntime" },
+    { name = "psutil" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "soundfile" },
@@ -685,7 +671,6 @@ requires-dist = [
     { name = "aic-sdk", specifier = ">=2.5.0" },
     { name = "aiohttp", specifier = ">=3.10" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "hecttor-sdk", path = "vendor/hecttor_sdk-3.1.1-cp312-cp312-macosx_15_0_arm64.whl" },
     { name = "livekit", specifier = ">=1.0" },
     { name = "livekit-api", specifier = ">=1.0" },
     { name = "livekit-plugins-ai-coustics", specifier = ">=0.3.0" },
@@ -693,6 +678,7 @@ requires-dist = [
     { name = "livekit-plugins-silero", specifier = ">=1.6.7" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "onnxruntime", specifier = ">=1.18" },
+    { name = "psutil", specifier = ">=5.9" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "soundfile", specifier = ">=0.12" },

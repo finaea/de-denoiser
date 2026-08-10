@@ -1,7 +1,7 @@
 """Does the AudioStream sample rate change what the Cloud NC filter does?
 
 The bench attaches its live-rail candidates with rtc.AudioStream(sample_rate=
-48000). ai-handler attaches the same Krisp filter at 16000 on its live rail
+48000). A production agent attaches the same Krisp filter at 16000 on its live rail
 (livekit_worker.py: AudioStream(..., sample_rate=16000)) and at the agents
 default of 24000 on the AgentSession path. If the filter runs before that
 resample, all three see identical audio and a bench result transfers to

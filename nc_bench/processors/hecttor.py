@@ -1,9 +1,9 @@
-"""Offline/streaming Hecttor ASR enhancer (same SDK + key ai-handler uses).
+"""Offline/streaming Hecttor ASR enhancer (proprietary SDK, installed separately).
 
 Feeds fixed get_chunk_size_samples() float32 chunks through
-ASRSpeechEnhancer.process_chunk, exactly like the ai-handler integration —
-minus the rtc plumbing, since here the audio is already mono float32 at the
-enhancer's rate.
+ASRSpeechEnhancer.process_chunk, exactly like a live integration would — minus
+the rtc plumbing, since here the audio is already mono float32 at the enhancer's
+rate.
 """
 
 from __future__ import annotations

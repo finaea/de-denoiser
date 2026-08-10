@@ -20,8 +20,8 @@ Phone call: **outbound** — place a SIP participant on LK_SIP_TRUNK_ID dialling
             the SIP participant leaving and trips the same stop flag).
 
 Outbound rather than inbound because inbound needed AGENT_NAME to match the
-project's SIP dispatch rule, which meant the bench and ai-handler fought over
-every real call to the same project.
+project's SIP dispatch rule, which meant the bench and the production agent
+fought over every real call to the same project.
 
 The job records the raw track at 48 kHz mono s16 (plus one extra AudioStream
 per ticked cloud live-rail candidate, e.g. Krisp BVC) and pushes ~20 ms

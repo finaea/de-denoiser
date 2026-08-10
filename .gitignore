@@ -11,3 +11,9 @@ models/fastenhancer/
 models/rnnoise/
 models/aic/
 models/hush/
+models/dtln/
+models/dnsmos/
+
+# Hecttor's SDK wheel is proprietary and must never be redistributed here.
+# Install it yourself from your own Hecttor licence — see README.
+vendor/

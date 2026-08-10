@@ -24,7 +24,7 @@ LIVEKIT_API_SECRET = _get("LIVEKIT_API_SECRET")
 # The agent name the recorder registers under. Phone mode dials *out* and
 # dispatches the recorder into its own room explicitly, so this deliberately does
 # NOT match the project's inbound SIP dispatch rule — sharing that name would make
-# the bench steal ai-handler's real inbound calls (LiveKit load-balances jobs
+# the bench steal your production agent's real inbound calls (LiveKit load-balances jobs
 # across every worker registered under a name).
 LK_AGENT_NAME = _get("LK_AGENT_NAME", "nc-bench-recorder")
 
@@ -45,21 +45,21 @@ HECTTOR_SAMPLE_RATE = int(_get("HECTTOR_SAMPLE_RATE", "16000"))
 HECTTOR_CHUNK_MS = int(_get("HECTTOR_CHUNK_MS", "20"))
 
 # ---- Silero VAD ----
-# Same model file and the same livekit-agents state machine ai-handler runs, so a
+# Same model file and the same livekit-agents state machine production runs, so a
 # span here is a turn production's segmentation would cut.
 #
-# The THRESHOLDS deliberately no longer match ai-handler's config.example.ini
-# [livekit] (min_speech 0.12, min_silence 0.55). These are tighter — 0.05 accepts
+# The THRESHOLDS deliberately no longer match the livekit-agents defaults a
+# production pipeline typically runs (min_speech 0.12, min_silence 0.55). These are tighter — 0.05 accepts
 # shorter blips as speech and 0.4 ends a turn on a shorter pause — which resolves
 # the timeline into more, smaller spans and makes it visible when a chain shaves
-# an onset or swallows a pause. Comparing against ai-handler means putting 0.12 /
+# an onset or swallows a pause. Comparing against production means putting 0.12 /
 # 0.55 back, in .env or in the per-run panel.
 VAD_ENABLED = _get("VAD_ENABLED", "true").lower() == "true"
 VAD_ACTIVATION_THRESHOLD = float(_get("VAD_ACTIVATION_THRESHOLD", "0.50"))
 VAD_DEACTIVATION_THRESHOLD = float(_get("VAD_DEACTIVATION_THRESHOLD", "0.50"))
 VAD_MIN_SPEECH_DURATION = float(_get("VAD_MIN_SPEECH_DURATION", "0.05"))
 VAD_MIN_SILENCE_DURATION = float(_get("VAD_MIN_SILENCE_DURATION", "0.40"))
-# Not set by ai-handler, so this is the plugin's own default. It back-dates each
+# Usually left unset in production, so this is the plugin's own default. It back-dates each
 # span's start, which is why a highlight can begin before audible speech.
 VAD_PREFIX_PADDING_DURATION = float(_get("VAD_PREFIX_PADDING_DURATION", "0.5"))
 

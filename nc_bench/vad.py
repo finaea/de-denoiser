@@ -1,5 +1,5 @@
 """Silero VAD over a finished wav, driven through the same livekit-agents plugin
-ai-handler runs in production.
+a production voice agent runs.
 
 Why this belongs in an NC bench: production never hands a whole call to the STT.
 LiveKit's VAD cuts the call into turns and each turn becomes one /recognize POST
@@ -62,8 +62,8 @@ SUPPORTED_RATES = (8000, 16000)
 # the band instead of feeding the model an empty top half; mic and file sources
 # are genuinely wideband.
 #
-# NOTE this is the one place nc_bench deliberately diverges from ai-handler, which
-# pins 16 kHz for every source. A phone run measured at 8 kHz is an experiment,
+# NOTE this is the one place nc_bench deliberately diverges from a typical
+# production config, which pins 16 kHz for every source. A phone run measured at 8 kHz is an experiment,
 # not a mirror of production — the panel says so when the rate is not 16000.
 SOURCE_RATES = {"phone": 8000, "web": 16000, "upload": 16000}
 DEFAULT_RATE = 16000
@@ -75,7 +75,7 @@ def defaults(source: str | None = None) -> dict:
     """.env thresholds plus the inference rate implied by `source`.
 
     Thresholds come from .env; see config.py for why they sit tighter than
-    ai-handler's. The rate is NOT an .env value because a single setting cannot
+    the livekit-agents defaults. The rate is NOT an .env value because a single setting cannot
     express "8 k for a phone leg, 16 k for a mic".
     """
     return {

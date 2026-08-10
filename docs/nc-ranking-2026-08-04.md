@@ -12,7 +12,7 @@ qualities are scored, because they fail independently:
 1. **STT quality** — WER of the local Qwen3-ASR transcript against the reference
    script read during the call.
 2. **VAD segmentation vs hand marks** — Silero VAD (the same
-   livekit-agents plugin ai-handler runs, thresholds act/deact 0.50, min speech
+   livekit-agents plugin our production agent runs, thresholds act/deact 0.50, min speech
    0.05 s, min silence 0.40 s, prefix pad 0.5 s; 8 kHz inference for phone,
    16 kHz for web) is run on each candidate's output, and its spans are compared
    against speech regions **hand-marked on the raw input waveform**. The marks are
@@ -380,7 +380,7 @@ answer is strictly better: Hecttor ASR on phone, passthrough on web.
 - Hand marks are drawn on the raw waveform by eye; sub-100 ms edges are subjective.
   Deltas vs passthrough cancel most of this; absolute miss/agree values inherit it.
 - Phone VAD runs use 8 kHz Silero inference (matches the telephony band);
-  ai-handler production pins 16 kHz everywhere. Deltas are internally consistent,
+  our production agent pins 16 kHz everywhere. Deltas are internally consistent,
   but absolute spans differ from what production would cut today.
 - All STT numbers are from the local Qwen3-ASR endpoint; a different recogniser
   can reorder the STT tables. The VAD tables are recogniser-independent.
