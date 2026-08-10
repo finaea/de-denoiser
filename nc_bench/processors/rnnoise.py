@@ -1,12 +1,12 @@
 """RNNoise (Valin 2018) — the classic baseline row, via ffmpeg's `arnndn`.
 
-ffmpeg already ships the RNNoise filter and we already depend on ffmpeg for
+ffmpeg already ships the RNNoise filter and is already a dependency for
 upload decoding, so the whole integration is one subprocess. It needs a weights
 file (`models/rnnoise/<id>.rnnn`, from GregorR/rnnoise-models) and runs at
 48 kHz — the pipeline resamples in and out.
 
 ponytail: whole-file, not streaming. `arnndn` streams internally but driving it
-through pipes chunk-by-chunk buys nothing for a baseline we only want one score
+through pipes chunk-by-chunk buys nothing for a baseline that needs only one score
 from — so this processor buffers the input and shells out once in flush(), and
 declares `whole_file` so the pipeline reports no per-block latency for it rather
 than a misleading ~0 ms. Upgrade path: pipe s16le through a long-lived ffmpeg.

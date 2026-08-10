@@ -13,15 +13,15 @@ so the job always knows which room and which participant it is waiting for.
 
 Web call:   hand the browser a publish token; the job records its mic track.
 Phone call: **outbound** — place a SIP participant on LK_SIP_TRUNK_ID dialling
-            LK_SIP_CALL_TO into our own room; you pick up and talk. The recorder
+            LK_SIP_CALL_TO into a room it owns; answering starts the take. The recorder
             is dispatched *before* the dial so it is already subscribed when the
             call is answered, otherwise the first seconds are lost. Hanging up
             ends the recording exactly like pressing Stop (the job watches for
             the SIP participant leaving and trips the same stop flag).
 
 Outbound rather than inbound because inbound needed AGENT_NAME to match the
-project's SIP dispatch rule, which meant the bench and the production agent
-fought over every real call to the same project.
+project's SIP dispatch rule, which meant the bench and any other agent fought
+over every real call to the same project.
 
 The job records the raw track at 48 kHz mono s16 (plus one extra AudioStream
 per ticked cloud live-rail candidate, e.g. Krisp BVC) and pushes ~20 ms
@@ -82,7 +82,7 @@ class _Bridge:
         self.emit: EventCb | None = None
 
     def reset(self):
-        # armed: a session is open, so an incoming job belongs to us
+        # armed: a session is open, so an incoming job belongs to this session
         # claimed: a job is already recording — later jobs must not double-record
         self.armed = False
         self.claimed = False
@@ -100,7 +100,7 @@ class _Bridge:
         self.raw: list[np.ndarray] = []
         self.live_bufs: dict[str, list[np.ndarray]] = {}
         self.live_errors: dict[str, str] = {}
-        self.diag: dict = {}  # room / participant / SIP attributes of what we recorded
+        self.diag: dict = {}  # room / participant / SIP attributes of the recording
         # why the outbound call never produced audio; only this knows the SIP reason
         self.dial_error: str | None = None
 
@@ -299,7 +299,7 @@ async def _entrypoint(ctx) -> None:
 
 
 async def _on_request(req) -> None:
-    """Accept every job offered to us, and record that it was offered.
+    """Accept every job offered, and record that it was offered.
 
     Without this trail a failed phone call is indistinguishable from a call that
     never arrived: the job log is the only place that difference shows up.
@@ -489,7 +489,7 @@ class Recorder:
                         krisp_enabled=False,
                     )
                 )
-                # wait_until_answered=True means we are past the 200 OK: the far
+                # wait_until_answered=True means the call is past the 200 OK: the far
                 # end has actually picked up, so the job may start recording.
                 _bridge.answered.set()
                 _note("answered", room=self.room_name)

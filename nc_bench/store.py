@@ -24,7 +24,7 @@ def new_run(source: str, note: str = "") -> tuple[str, Path]:
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "source": source,
         "status": "recording",
-        # free-text conditions for this run ("someone talking beside me",
+        # free-text conditions for this run ("someone talking nearby",
         # "speakerphone at arm's length"). Deliberately NOT part of `script`,
         # which is the WER reference — describing the room in there would be
         # scored as words the speaker failed to say.

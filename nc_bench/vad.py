@@ -38,7 +38,7 @@ from livekit.agents import vad as agents_vad
 
 from . import config
 
-_PUSH_MS = 100  # frame size we feed; the plugin re-windows internally
+_PUSH_MS = 100  # frame size fed in; the plugin re-windows internally
 
 # Ranges the UI is allowed to ask for. Thresholds are probabilities; the
 # durations are bounded well past anything useful so a fat-fingered value fails
@@ -63,7 +63,7 @@ SUPPORTED_RATES = (8000, 16000)
 # are genuinely wideband.
 #
 # NOTE this is the one place nc_bench deliberately diverges from a typical
-# production config, which pins 16 kHz for every source. A phone run measured at 8 kHz is an experiment,
+# live configuration, which pins 16 kHz for every source. A phone run measured at 8 kHz is an experiment,
 # not a mirror of production — the panel says so when the rate is not 16000.
 SOURCE_RATES = {"phone": 8000, "web": 16000, "upload": 16000}
 DEFAULT_RATE = 16000
@@ -238,7 +238,7 @@ async def analyze(wav, p: dict | None = None, source: str | None = None) -> dict
         # the recording stopped, so no END_OF_SPEECH ever fires. Reading only END
         # events silently drops that whole final turn — measured on a 13 s web
         # call that is 68% speech by probability and reported ZERO spans. Common
-        # enough to matter: you stop the recorder while still talking.
+        # enough to matter: the recorder is stopped while speech is still going.
         if open_start is not None and duration_s > open_start:
             segments.append([round(open_start, 3), round(duration_s, 3)])
     finally:

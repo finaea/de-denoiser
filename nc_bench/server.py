@@ -141,7 +141,7 @@ async def api_config():
 @app.get("/api/worker")
 async def api_worker():
     """Job-level trail. Tells 'the call never arrived' apart from 'it arrived and
-    we dropped it', which is invisible from the run alone."""
+    was dropped', which is invisible from the run alone."""
     return {"agent_name": config.LK_AGENT_NAME, "alive": worker_alive(),
             "events": worker_events()}
 
@@ -382,7 +382,7 @@ async def _process_run(
         input_scores = {"error": str(e)}
     meta["input_scores"] = input_scores
     # The raw leg's spans are the reference every candidate is read against: a
-    # chain that drops a span dropped a turn production would have transcribed.
+    # chain that drops a span dropped a turn a live deployment would transcribe.
     # Rate follows the source (a phone leg is narrowband whatever it arrives as),
     # but a reprocess keeps whatever the run was already measured at — resetting to
     # defaults would silently make the new candidates incomparable with the marks
@@ -502,7 +502,7 @@ _reprocessing: set[str] = set()
 
 @app.post("/api/runs/{run_id}/stt_segmented")
 async def stt_segmented(run_id: str):
-    """Re-transcribe every candidate the way production would hear it: cut the
+    """Re-transcribe every candidate the way a live deployment would hear it: cut the
     output audio at that candidate's own VAD spans, one STT request per turn,
     transcripts joined in time order, WER recomputed.
 
@@ -510,7 +510,7 @@ async def stt_segmented(run_id: str):
     production never posts two minutes of audio in one request, and long files
     push the autoregressive STT into repetition collapse. This mode makes the
     VAD's misses REAL: speech the VAD failed to find is simply never transcribed,
-    exactly as in production, so the WER and the missed-speech metric finally
+    exactly as a live deployment would, so the WER and missed-speech metric finally
     describe the same pipeline.
 
     Cuts use each candidate's OWN spans (production runs VAD on the NC-processed
@@ -637,8 +637,8 @@ async def reprocess_run(run_id: str, body: dict | None = None):
 def _merge_spans(spans, limit: float) -> list[list[float]]:
     """Sorted, clamped, non-overlapping.
 
-    Hand-drawn regions arrive in paint order and overlap freely (you redraw over
-    a region you got slightly wrong). Storing them raw would leave any later
+    Hand-drawn regions arrive in paint order and overlap freely (a region can be
+    redrawn over one that was slightly off). Storing them raw would leave any later
     interval arithmetic dependent on the order they were painted in.
     """
     clean: list[list[float]] = []
@@ -667,7 +667,7 @@ async def set_truth(run_id: str, body: dict):
     VAD spans are scored against.
 
     Marked once on the raw input and reused for every candidate, deliberately —
-    the question is "did this chain's audio still let the VAD find MY speech",
+    the question is "did this chain's audio still let the VAD find the speech",
     which needs a reference no chain can influence.
 
     Only the regions are stored. Scoring is interval arithmetic the page does

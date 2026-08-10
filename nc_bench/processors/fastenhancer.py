@@ -2,7 +2,7 @@
 
 The published wav2wav exports do STFT/iSTFT inside the graph: feed one hop of
 new samples, get one hop back, with the model carrying its own input/output
-caches. Everything we need is in the graph: `wav_in` is [1, hop] and
+caches. Everything needed is in the graph: `wav_in` is [1, hop] and
 `cache_in_0` is [1, n_fft - hop], so hop size (which differs per size variant —
 t/s 256, m 160, l 100) never has to be hard-coded.
 

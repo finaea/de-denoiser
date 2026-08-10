@@ -56,7 +56,7 @@ async def transcribe(wav_path: Path) -> dict:
 def merge_turns(segments, pad_s: float, duration_s: float) -> list[list[float]]:
     """VAD spans -> the cut list actually sent, one entry per STT request.
 
-    Start extended by pad_s (production's speech buffer includes prefix padding
+    Start extended by pad_s (a live speech buffer includes prefix padding
     the stored spans don't), clamped to the file, sub-20 ms slivers dropped, and
     overlaps merged — sending the same audio twice would transcribe the same
     words twice and score as insertions. Pure so scripts/check_stt_turns.py can
@@ -82,7 +82,7 @@ async def transcribe_turns(
     production actually feeds this STT (livekit's VAD segments the call and each
     turn is one /recognize POST; the model never sees two minutes at once).
 
-    Each turn's start is extended by `pad_s`: production's speech buffer includes
+    Each turn's start is extended by `pad_s`: a live speech buffer includes
     prefix_padding_duration of audio from BEFORE the detected onset, and the
     stored spans don't. Turns that overlap after extension are merged — duplicated
     audio would transcribe the same words twice and score as insertions.

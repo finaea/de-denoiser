@@ -1,7 +1,7 @@
 """Does the AudioStream sample rate change what the Cloud NC filter does?
 
 The bench attaches its live-rail candidates with rtc.AudioStream(sample_rate=
-48000). A production agent attaches the same Krisp filter at 16000 on its live rail
+48000). A live agent attaches the same Krisp filter at 16000 on its live rail
 (livekit_worker.py: AudioStream(..., sample_rate=16000)) and at the agents
 default of 24000 on the AgentSession path. If the filter runs before that
 resample, all three see identical audio and a bench result transfers to
@@ -55,8 +55,8 @@ def source_signal(n: int, rate: int, wideband: bool) -> np.ndarray:
     return soxr.resample(soxr.resample(x, rate, 8000), 8000, rate).astype(np.float32)
 
 
-# label -> (rate, use_nc). "48k-nc-B" is a second filter instance at a rate we
-# already measure: it calibrates how much two runs differ for reasons that have
+# label -> (rate, use_nc). "48k-nc-B" is a second filter instance at an
+# already-measured rate: it calibrates how much two runs differ for reasons that have
 # nothing to do with the rate, so cross-rate differences can be read against it.
 STREAMS = {f"{r // 1000}k-{'nc' if nc else 'raw'}": (r, nc) for r in RATES for nc in (True, False)}
 STREAMS["48k-nc-B"] = (48_000, True)

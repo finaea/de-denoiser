@@ -12,7 +12,7 @@ qualities are scored, because they fail independently:
 1. **STT quality** — WER of the local Qwen3-ASR transcript against the reference
    script read during the call.
 2. **VAD segmentation vs hand marks** — Silero VAD (the same
-   livekit-agents plugin our production agent runs, thresholds act/deact 0.50, min speech
+   livekit-agents plugin a live deployment runs, thresholds act/deact 0.50, min speech
    0.05 s, min silence 0.40 s, prefix pad 0.5 s; 8 kHz inference for phone,
    16 kHz for web) is run on each candidate's output, and its spans are compared
    against speech regions **hand-marked on the raw input waveform**. The marks are
@@ -65,7 +65,7 @@ NC's contribution.
   did this NC help or hurt vs doing nothing."*
 - **worst** — the single most harmful delta among them: *"when it backfired, how
   badly."* This is downside exposure, not a typo for best. With n≈8–10 it tells
-  you a failure of that size is possible, not how often it happens.
+  that a failure of that size is possible, not how often it happens.
 - **W / L** — runs strictly better / strictly worse than passthrough. Exact ties
   count in neither, so W+L rarely equals n.
 - **abs agree** (agreement tables only) — the candidate's absolute agreement,
@@ -185,8 +185,7 @@ that NC has only downside for transcription.
 | 10 | `rnnoise-bd` | 8 | +0.83 s | +3.59 s | 0 | 6 |
 
 Cliff after rank 2: everything below costs **0.5–0.8 s of real speech per call**
-with zero wins — including `krisp-nc` and `krisp-bvc`, the current production
-default. `rnnoise-bd`'s worst case is 3.59 s of speech gone.
+with zero wins — including `krisp-nc` and `krisp-bvc`, a common default choice. `rnnoise-bd`'s worst case is 3.59 s of speech gone.
 
 ## Web — VAD, agreement (8 runs · passthrough averages 90.7%)
 
@@ -328,7 +327,7 @@ is lost — but the speech-time *is* lost.
 
 The two tables answer different production questions:
 
-- **missed speech** → will my words still reach the STT? A miss is unrecoverable:
+- **missed speech** → do the words still reach the STT? A miss is unrecoverable:
   the turn is never transcribed.
 - **agreement** → will noise stop creating phantom turns? A false-alarm turn hands
   the STT junk; the agent may transcribe garbage or answer nobody.
@@ -349,8 +348,8 @@ longer than a scripted test clip.
 **Web: run nothing.** Three independent measurements agree — zero of ~30
 candidates improved WER on average, everything except `gtcrn`/`ulunas` eats 0.5 s+
 of real speech per call, and the agreement gains that do exist come from the same
-over-suppression that eats the speech. This includes Krisp, the current production
-provider (0W/7L missed-speech on web).
+over-suppression that eats the speech. This includes Krisp (0W/7L missed-speech
+on web).
 
 **The VAD-cut WER (added 2026-08-05) amends the web verdict.** Measured
 production-real — one STT request per VAD turn — raw audio is much worse than the
@@ -380,8 +379,8 @@ answer is strictly better: Hecttor ASR on phone, passthrough on web.
 - Hand marks are drawn on the raw waveform by eye; sub-100 ms edges are subjective.
   Deltas vs passthrough cancel most of this; absolute miss/agree values inherit it.
 - Phone VAD runs use 8 kHz Silero inference (matches the telephony band);
-  our production agent pins 16 kHz everywhere. Deltas are internally consistent,
-  but absolute spans differ from what production would cut today.
+  a live deployment commonly pins 16 kHz everywhere. Deltas are internally
+  consistent, but absolute spans differ from what a 16 kHz cut would give.
 - All STT numbers are from the local Qwen3-ASR endpoint; a different recogniser
   can reorder the STT tables. The VAD tables are recogniser-independent.
 - VAD spans carry inference jitter: onnxruntime is nondeterministic at the

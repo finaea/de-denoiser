@@ -287,7 +287,7 @@ def main() -> None:
     print(f"band OK: full-band {bw_wide} Hz, 8 kHz round trip {bw_narrow} Hz")
 
     # DNSMOS + VAD gap plumbing on the synthetic input (semantics need real
-    # speech; here we assert shapes, ranges, and that gaps exist in tone+noise)
+    # speech; this asserts shapes, ranges, and that gaps exist in tone+noise)
     s_in = scoring.score_input(inp)
     d = s_in["dnsmos"]
     assert all(1.0 <= d[k] <= 5.0 for k in ("sig", "bak", "ovrl")), d

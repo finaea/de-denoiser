@@ -24,11 +24,11 @@ LIVEKIT_API_SECRET = _get("LIVEKIT_API_SECRET")
 # The agent name the recorder registers under. Phone mode dials *out* and
 # dispatches the recorder into its own room explicitly, so this deliberately does
 # NOT match the project's inbound SIP dispatch rule — sharing that name would make
-# the bench steal your production agent's real inbound calls (LiveKit load-balances jobs
+# the bench steal another agent's real inbound calls (LiveKit load-balances jobs
 # across every worker registered under a name).
 LK_AGENT_NAME = _get("LK_AGENT_NAME", "nc-bench-recorder")
 
-# ---- outbound phone call: the bench dials you, you pick up ----
+# ---- outbound phone call: the bench dials out and records whoever answers ----
 # Outbound trunk to place the call on, and the number to ring.
 LK_SIP_TRUNK_ID = _get("LK_SIP_TRUNK_ID")
 LK_SIP_CALL_TO = _get("LK_SIP_CALL_TO")
@@ -45,14 +45,14 @@ HECTTOR_SAMPLE_RATE = int(_get("HECTTOR_SAMPLE_RATE", "16000"))
 HECTTOR_CHUNK_MS = int(_get("HECTTOR_CHUNK_MS", "20"))
 
 # ---- Silero VAD ----
-# Same model file and the same livekit-agents state machine production runs, so a
-# span here is a turn production's segmentation would cut.
+# Same model file and the same livekit-agents state machine a live deployment runs, so a
+# span here is a turn a live segmentation would cut.
 #
 # The THRESHOLDS deliberately no longer match the livekit-agents defaults a
 # production pipeline typically runs (min_speech 0.12, min_silence 0.55). These are tighter — 0.05 accepts
 # shorter blips as speech and 0.4 ends a turn on a shorter pause — which resolves
 # the timeline into more, smaller spans and makes it visible when a chain shaves
-# an onset or swallows a pause. Comparing against production means putting 0.12 /
+# an onset or swallows a pause. Comparing against the common live values means putting 0.12 /
 # 0.55 back, in .env or in the per-run panel.
 VAD_ENABLED = _get("VAD_ENABLED", "true").lower() == "true"
 VAD_ACTIVATION_THRESHOLD = float(_get("VAD_ACTIVATION_THRESHOLD", "0.50"))

@@ -105,7 +105,7 @@
     background: #0c0c0eee; backdrop-filter: blur(10px);
     z-index: 20; flex-wrap: wrap;
   }
-  /* the one hairline that says "this is the orange app" before you read a word */
+  /* the one hairline that identifies the app before a word has been read */
   header::after {
     content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
     background: linear-gradient(90deg, var(--brand), #ff7a1800 34%, transparent);
@@ -185,7 +185,7 @@
     background: var(--danger); color: #fff; box-shadow: 0 6px 16px -8px #f43f5e;
   }
   /* A control wears the colour of the thing it acts on: the two VAD buttons are
-     cyan like the spans they redraw, the mark-my-speech cluster is violet like
+     cyan like the spans they redraw, the speech-marking cluster is violet like
      the ribbon it paints. Ids, not classes — the mark bar is rebuilt as innerHTML
      on every click, so anything bound by hand would not survive. */
   #btnVad, #btnSeg { color: var(--vad-strong); box-shadow: inset 0 0 0 1px #22d3ee55; }
@@ -203,7 +203,7 @@
   #btnMarkDone:hover { background: linear-gradient(180deg, #ddd2ff, var(--mark-strong));
                        box-shadow: 0 8px 22px -6px #a78bfa; }
 
-  /* A status you read from across the room: hue + a dot, not just a word. */
+  /* A status readable from across the room: hue + a dot, not just a word. */
   .pill {
     display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 4px;
     font: 700 10px/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase;
@@ -310,7 +310,7 @@
   .cand-card .stt.seg { border-left-color: var(--vad); background: #05121580; }
   .cand-card .stt.empty { color: var(--body-subtle); font-style: italic; }
   .cand-card .err { color: var(--danger-strong); font: 11px/1.5 var(--mono); margin: 7px 0; }
-  /* the one control the browser draws for us. Thirty-five stacked native players
+  /* the one control the browser draws itself. Thirty-five stacked native players
      are the brightest thing on a near-black page, so they sit back until the
      pointer is on the card that owns them. */
   .cand-card audio { width: 100%; height: 34px; margin-top: 8px; opacity: .62; transition: opacity .16s; }
@@ -320,7 +320,7 @@
   audio::-webkit-media-controls-current-time-display,
   audio::-webkit-media-controls-time-remaining-display { color: var(--body); }
   .cand-card .dl { font: 11px/1.5 var(--mono); margin-top: 4px; }
-  /* the wells that quote a run back at you: script, VAD params, transcripts */
+  /* the wells that quote a run back: script, VAD params, transcripts */
   .well { background: var(--deep); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
           border-left: 2px solid var(--accent, var(--border-strong)); }
   /* the script is a human saying what was true — same violet as the marked
@@ -436,12 +436,12 @@
   <div class="box">
     <h2>Source</h2>
     <label class="radio"><input type="radio" name="source" value="phone" checked />
-      Phone call (outbound — we ring you)</label>
+      Phone call (outbound — the bench calls out)</label>
     <label class="radio"><input type="radio" name="source" value="web" />
       Web call (browser mic)</label>
     <label class="radio"><input type="radio" name="source" value="upload" />
       Upload audio file</label>
-    <div class="hint" id="srcHint">Phone: press Start and your phone rings
+    <div class="hint" id="srcHint">Phone: press Start and the phone rings
       (<code>LK_SIP_CALL_TO</code> over <code>LK_SIP_TRUNK_ID</code>). Pick up and talk.
       Hanging up ends the run exactly like pressing Stop.</div>
     <div class="hint" id="agentHint"></div>
@@ -461,9 +461,9 @@
   <div class="box">
     <h2>Run notes (optional)</h2>
     <textarea id="note" style="min-height:46px"
-      placeholder="Conditions worth remembering when you revisit this run: &quot;someone talking beside me&quot;, &quot;speakerphone at arm's length&quot;, &quot;quiet room&quot;."></textarea>
+      placeholder="Conditions worth recording for later: &quot;someone talking nearby&quot;, &quot;speakerphone at arm's length&quot;, &quot;quiet room&quot;."></textarea>
     <div class="hint">Kept out of the reference script on purpose — describing the room
-      in there would be scored as words you failed to say. Shows in history, and stays
+      in there would be scored as unspoken words. Shows in history, and stays
       editable once the run is loaded.</div>
   </div>
 
@@ -485,7 +485,7 @@
         <label for="waveHeight" style="margin-left:4px">height</label>
         <select id="waveHeight"></select>
         <label for="vadShow" style="margin-left:4px"
-          title="Silero VAD spans — the turns production would cut and send to STT">
+          title="Silero VAD spans — the turns a live deployment would cut and send to STT">
           <input type="checkbox" id="vadShow" checked style="vertical-align:-1px" /> VAD</label>
         <label for="vadSnap"
           title="clicks on a waveform snap to the nearest VAD span edge, so playback starts exactly where the VAD opened or closed a turn">
@@ -533,9 +533,9 @@
           <button id="btnVad" class="mini">↻ re-run VAD on this run</button>
           <button id="btnSeg" class="mini" title="cut each candidate's audio at its own
             VAD spans, one STT request per turn — how production actually feeds the STT.
-            Speech the VAD missed is never transcribed, so WER becomes production-real.">✂ STT by VAD turns</button>
+            Speech the VAD missed is never transcribed, so WER reflects live behaviour.">✂ STT by VAD turns</button>
           <span class="hint" style="margin:0;flex:1 1 260px">Same model and state machine a
-            livekit-agents pipeline runs. Production cuts the call into turns with this and sends <b>one turn
+            livekit-agents pipeline runs. A live deployment cuts the call into turns with this and sends <b>one turn
             per STT request</b> — the cyan spans are what each candidate leaves for
             the recogniser. Re-running touches nothing but the spans.</span>
         </div>
@@ -763,9 +763,9 @@ $("btnNote").onclick = async () => {
 };
 
 // --------------------------------------------------------------- vad panel
-// Seeded from .env (which should mirror your production config) so the page
-// opens showing what production would do; change a field and re-run to ask what
-// a different threshold would have done to every recording you already have.
+// Seeded from .env (which should mirror the deployment being modelled) so the
+// page opens showing what a live cut would do; change a field and re-run to ask
+// what a different threshold would have done to an existing recording.
 const VAD_FIELDS = [
   ["activation_threshold", "activation", "p(speech) that starts a span"],
   ["deactivation_threshold", "deactivation", "p(speech) below which it can end"],
@@ -777,7 +777,7 @@ const VAD_FIELDS = [
 // 16 k (different window/context per rate), so this is a select, not a number
 // box that could be nudged to 12000.
 const RATE_WHY = "silero inference rate — 8 k matches a narrowband phone leg, "
-  + "16 k a wideband mic. Production typically pins 16 k for every source.";
+  + "16 k a wideband mic. Live deployments commonly pin 16 k for every source.";
 function rateLabel(hz) {
   return hz === 8000 ? "8 kHz (narrowband)" : hz === 16000 ? "16 kHz (wideband)" : hz + " Hz";
 }
@@ -852,15 +852,15 @@ function showVadBar(meta) {
     // against; claiming "these are the defaults" would be a guess
     notes.push(grey("as measured when this export was made"));
   } else {
-    // The rate is called out separately because production typically pins 16 kHz for every
-    // source: anything else is a deliberate experiment, not a production mirror.
+    // The rate is called out separately because live deployments commonly pin
+    // 16 kHz for every source: anything else is a deliberate experiment.
     // Both directions are worth saying — measured off this source's default is
-    // just as surprising as measured off production's.
+    // just as surprising as measured off the common default.
     if (+saved.sample_rate !== 16000) {
-      notes.push(amber(`${+saved.sample_rate / 1000} kHz inference — production typically
-        pins 16 kHz, so these spans are an experiment, not what production would cut`));
+      notes.push(amber(`${+saved.sample_rate / 1000} kHz inference — live deployments
+        commonly pin 16 kHz, so these spans are an experiment, not a live cut`));
     } else if (+expected.sample_rate !== 16000) {
-      notes.push(grey(`16 kHz (production parity) — this source defaults to
+      notes.push(grey(`16 kHz (the common live setting) — this source defaults to
         ${+expected.sample_rate / 1000} kHz; switch the rate and re-run to compare`));
     }
     const thresholdsDiffer = VAD_FIELDS.some(([k]) => +saved[k] !== +expected[k]);
@@ -1001,7 +1001,7 @@ function sizeCanvas(cv, baseCss, mul) {
 }
 
 // Captions are drawn ON the signal, and at high gain the signal fills the canvas
-// — so they get a plate. Otherwise the one line telling you the view is clipping
+// — so they get a plate. Otherwise the one line reporting that the view clips
 // becomes unreadable exactly when it matters. Size is passed, not parsed off
 // ctx.font: a weighted font string ("500 20px …") parses to the weight.
 function plated(ctx, text, x, baseline, size, color) {
@@ -1431,7 +1431,7 @@ function renderCandidateCard(runId, e) {
 // clock, so anything that spreads over cores looks cheap on an idle laptop and
 // is anything but on a box carrying N calls. cpu_per_audio_s is core-seconds per
 // second of audio, so its reciprocal is how many concurrent calls one core
-// holds — the number you actually size hardware with.
+// holds — the number hardware is sized with.
 function costLine(c) {
   if (!c) return "";
   const bits = [];
@@ -1454,7 +1454,7 @@ function baseVad() {
   return (c && c.vad) || (state.runMeta || {}).input_vad || null;
 }
 
-// Reads as "what production's turn segmentation did to this audio". Spans and
+// Reads as "what a live turn segmentation did to this audio". Spans and
 // total speech are the two numbers that matter: fewer spans means turns were
 // merged or lost, less speech means onsets/tails were shaved.
 function vadLine(v, err, base) {
@@ -1620,7 +1620,7 @@ function paintWave(canvasId) {
   ctx.font = cap.font;
   plated(ctx, scaleCaption(clipped, mul), 10, H - bar - 7, cap.px, C.caption);
 
-  // playhead, so you can see which part of the waveform you are hearing
+  // playhead, so the audible part of the waveform is identifiable
   const audio = waveAudio(cv);
   if (audio && audio.duration > 0 && isFinite(audio.duration) && audio.currentTime > 0) {
     const x = (audio.currentTime / audio.duration) * W;
@@ -1635,7 +1635,7 @@ function paintWave(canvasId) {
 }
 
 // Silero VAD spans, drawn UNDER the waveform so the audio stays readable — these
-// are the turns production would cut and send to STT one at a time, which is why
+// are the turns a live deployment would cut and send to STT one at a time, which is why
 // a chain that shaves an onset costs a word before the recogniser ever runs.
 // Positioned from the span's own duration_s, never from the <audio> element:
 // metadata may not have loaded, and in an export there is no decodable source.
@@ -1687,8 +1687,8 @@ function paintRibbons(ctx, canvasId, W, H) {
 
 // The region being dragged right now, on the canvas being dragged only. The
 // committed marks are painted by paintRibbons() over the signal; this one goes
-// under it, because a wash across the full height is how you see which part of
-// the waveform you are about to swallow.
+// under it, because a wash across the full height shows which part of the
+// waveform the region is about to swallow.
 function paintTruth(ctx, canvasId, W, H) {
   const dur = truthDur();
   if (!dur || !state.drag || state.drag.cv.id !== canvasId) return;
@@ -1779,8 +1779,8 @@ document.addEventListener("click", (ev) => {
   seekAndPlay(audio, frac);
 });
 
-// -------------------------------------------------------- mark my speech
-// Drag on the INPUT waveform to paint where your own speech is. Delegated on
+// ----------------------------------------------------------- mark speech
+// Drag on the INPUT waveform to paint where real speech is. Delegated on
 // document because #wave-input is rebuilt on every loadRun, and mousemove/up go
 // on document too so a drag that leaves the canvas still finishes cleanly
 // instead of leaving a half-painted region stuck to the cursor.
@@ -1807,7 +1807,7 @@ document.addEventListener("mouseup", () => {
   if (!d) return;
   const dur = truthDur();
   const a = Math.min(d.from, d.to) * dur, b = Math.max(d.from, d.to) * dur;
-  // a click without a drag is how you delete: it removes the region under it
+  // a click without a drag deletes: it removes the region under the pointer
   if (b - a < 0.02) {
     const t = a;
     const hit = state.truth.findIndex(([s, e]) => t >= s && t <= e);
@@ -1839,7 +1839,7 @@ function renderMarkBar() {
   }
   if (!state.marking) {
     bar.innerHTML =
-      `<button class="mini" id="btnMark">✎ ${state.truth.length ? "edit" : "mark"} my speech</button>`
+      `<button class="mini" id="btnMark">✎ ${state.truth.length ? "edit" : "mark"} speech</button>`
       + (state.truth.length ? " " + summary : "");
   } else {
     bar.innerHTML = `<button class="mini primary" id="btnMarkDone">✓ done</button>
@@ -1847,9 +1847,9 @@ function renderMarkBar() {
       <button class="mini" id="btnMarkClear">clear</button>
       <button class="mini" id="btnMarkCancel">cancel</button> ${summary}
       <span class="hint" style="margin:0;display:block">Drag across the waveform above
-        to mark a stretch of <b>your</b> speech; click inside a region to delete it.
+        to mark a stretch of <b>real</b> speech; click inside a region to delete it.
         Click-to-play is off while marking. Press done to score every candidate's
-        VAD against your marks.</span>`;
+        VAD against those marks.</span>`;
   }
 }
 
@@ -1937,7 +1937,7 @@ async function loadRun(runId) {
     tr.classList.toggle("sel", tr.dataset.id === runId));
 }
 
-// ------------------------------------------------- vad vs my marked speech
+// ---------------------------------------------------- vad vs marked speech
 // Scored server-side (nc_bench/vad.py score_spans) and stored per candidate as
 // `truth_score`. It lives there rather than here because saving the marks is
 // already a round trip, so computing on the way costs nothing — and because a
@@ -1947,10 +1947,10 @@ function truthLine(t) {
   if (!t) return "";
   const col = t.agree >= 0.9 ? "var(--success-strong)"
     : t.agree >= 0.75 ? "var(--fg-warning)" : "var(--danger-strong)";
-  return `<div class="meta"><b>vs my marks</b>
+  return `<div class="meta"><b>vs marked speech</b>
     <span style="color:${col}">${(t.agree * 100).toFixed(1)}% agree</span>
-    · missed <b>${t.miss_s.toFixed(2)} s</b> of my speech
-    · ${t.fa_s.toFixed(2)} s marked speech I didn't</div>`;
+    · missed <b>${t.miss_s.toFixed(2)} s</b> of marked speech
+    · ${t.fa_s.toFixed(2)} s flagged that was never marked</div>`;
 }
 
 // --------------------------------------------------------------- rankings
@@ -1961,9 +1961,9 @@ function truthLine(t) {
 const CATEGORIES = [
   // First when it exists: it is the only column scored against what a human says
   // was actually spoken, rather than against another model's opinion.
-  { key: "agree", label: "VAD vs my marked speech", higher: true, hue: "var(--mark)",
+  { key: "agree", label: "VAD vs marked speech", higher: true, hue: "var(--mark)",
     fmt: (v) => (v * 100).toFixed(1) + "%", get: (_s, e) => e.truth_score?.agree },
-  { key: "miss",  label: "My speech the VAD missed", higher: false, hue: "var(--mark)",
+  { key: "miss",  label: "Marked speech the VAD missed", higher: false, hue: "var(--mark)",
     fmt: (v) => v.toFixed(2) + " s", get: (_s, e) => e.truth_score?.miss_s },
   { key: "ovrl",  label: "DNSMOS OVRL",        higher: true,  hue: "var(--steel)", fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.ovrl },
   { key: "sig",   label: "DNSMOS SIG (voice)", higher: true,  hue: "var(--steel)", fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.sig },
@@ -2044,8 +2044,8 @@ function renderRankings(runId, meta) {
 }
 
 // The rankings sit below the results, so a ranked row is usually far from the
-// card it names — scroll to it and flash it, otherwise you land on a wall of
-// near-identical cards with no idea which one you asked for.
+// card it names — scroll to it and flash it, otherwise the jump lands in a wall
+// of near-identical cards with no indication of which one was requested.
 function showScriptUsed(script) {
   const s = (script || "").trim();
   $("scriptUsed").style.display = "";
@@ -2066,8 +2066,8 @@ function showScriptUsed(script) {
   $("scriptUsedText").style.color = "var(--heading)";
 }
 
-// The header is sticky, so scrollIntoView({block:"start"}) tucks the heading you
-// asked for underneath it. Measure the header instead of hard-coding its height.
+// The header is sticky, so scrollIntoView({block:"start"}) tucks the requested
+// heading underneath it. Measure the header instead of hard-coding its height.
 document.querySelector("nav.rail").addEventListener("click", (ev) => {
   const btn = ev.target.closest("button[data-jump]");
   if (!btn) return;
@@ -2080,7 +2080,7 @@ document.querySelector("nav.rail").addEventListener("click", (ev) => {
 });
 
 // Same treatment jumpToCandidate uses: landing silently in a wall of near-identical
-// boxes leaves you unsure whether anything happened.
+// boxes gives no sign that anything happened.
 function flash(el) {
   el.style.transition = "outline-color .25s";
   el.style.outline = "2px solid var(--brand)";
@@ -2114,7 +2114,7 @@ async function loadHistory() {
       <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
           font-family:var(--mono);font-size:11px;color:var(--body-subtle)">${cands}</td>
       <td style="font-family:var(--mono);font-size:11px">${r.status}${(r.candidates || []).some((c) => c.stt_seg)
-        ? ' <span style="color:var(--vad-strong)" title="has VAD-cut transcripts: one STT request per turn, production-real WER">✂</span>' : ""}</td>`
+        ? ' <span style="color:var(--vad-strong)" title="has VAD-cut transcripts: one STT request per turn, live-realistic WER">✂</span>' : ""}</td>`
       + (EX ? "" : `<td style="text-align:right"><button class="mini danger"
            data-del="${esc(r.id)}" title="delete this run and its audio">✕</button></td>`);
     tr.onclick = () => loadRun(r.id);
@@ -2123,8 +2123,8 @@ async function loadHistory() {
 }
 
 // Capture phase, not bubble: this listener sits ABOVE the row, so on the way up
-// the row's own onclick would already have fired and loaded the run we are about
-// to delete. Capturing runs top-down, so stopPropagation() here reaches it first.
+// the row's own onclick would already have fired and loaded the run about to be
+// deleted. Capturing runs top-down, so stopPropagation() here reaches it first.
 $("histBody").addEventListener("click", async (ev) => {
   const btn = ev.target.closest && ev.target.closest("button[data-del]");
   if (!btn) return;
@@ -2168,7 +2168,7 @@ function initLive() {
       $("uploadField").style.display = r.value === "upload" && r.checked ? "" : "none";
       $("srcHint").textContent = {
         phone: "Phone: Start places an outbound SIP call to LK_SIP_CALL_TO over LK_SIP_TRUNK_ID and records whoever answers. Hang up or press Stop to finish.",
-        web: "Web: Start joins a fresh room and publishes your mic with browser noise-suppression disabled (we want the noise).",
+        web: "Web: Start joins a fresh room and publishes the microphone with browser noise-suppression disabled, so the noise survives.",
         upload: "Upload: pick a file, press Start — it goes straight to processing. Live-only candidates (Krisp) are disabled here.",
       }[r.value];
       applyLiveOnly();
@@ -2215,7 +2215,7 @@ function initExport() {
   $("tlTitle").textContent = "View";
   $("tlHint").innerHTML = `Scale and height apply to every waveform below —
     <b>click any of them to play from that point</b>. The cyan bar along the bottom
-    of each waveform is Silero VAD speech: the turns production would have cut and
+    of each waveform is Silero VAD speech: the turns a live deployment would cut and
     sent to STT one at a time. A violet bar on top is hand-marked speech.`;
   $("exportWrap").remove();
   $("btnVad").remove();       // read-only: renderVadFields drops the inputs too

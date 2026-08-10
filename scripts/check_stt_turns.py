@@ -1,4 +1,4 @@
-"""Does the VAD-turn cut list send exactly the audio production would — once?
+"""Does the VAD-turn cut list send exactly the audio a live deployment would — once?
 
 Worth a script because every failure mode here corrupts WER invisibly: an
 unmerged overlap transcribes the same words twice (scored as insertions), a

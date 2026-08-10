@@ -123,9 +123,9 @@ def gap_windows(audio: np.ndarray) -> list[tuple[float, float]]:
     win_s = _VAD_WINDOW / _FS
     # Per-window energy, and a quiet bar set halfway (in dB) between this
     # recording's own floor and its voiced level. A fixed margin can't work for
-    # both cases we care about: a clean line has 60 dB of separation, a caller in
+    # both relevant cases: a clean line has 60 dB of separation, a caller in
     # traffic may have 10 — and that noisy call is precisely the one whose gaps
-    # we want to measure. Below ~6 dB of separation there is nothing to
+    # under measurement. Below ~6 dB of separation there is nothing to
     # distinguish, so no gap qualifies and the metric abstains.
     n = len(probs)
     frames = audio[: n * _VAD_WINDOW].reshape(n, _VAD_WINDOW)
@@ -254,7 +254,7 @@ def score_input(input_wav: Path) -> dict:
     audio = load_16k(input_wav)
     gaps = gap_windows(audio)
     # measured at the file's own rate, not resampled: a 16 kHz view would clip
-    # every wideband recording to 8 kHz and hide the difference we're after
+    # every wideband recording to 8 kHz and hide the difference under test
     native, native_rate = sf.read(input_wav, dtype="float32", always_2d=True)
     return {
         "dnsmos": _dnsmos(audio),

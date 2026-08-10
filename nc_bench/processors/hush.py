@@ -9,7 +9,7 @@ no wideband resampling — and fully causal.
 Their published ONNX bundle is the three raw DFN graphs (encoder + ERB decoder +
 DF decoder), which take features and return gains, not audio. All the DSP that
 turns audio into features and gains back into audio lives in the shipped Rust
-library, so we drive that through ctypes instead of reimplementing it:
+library, so it is driven through ctypes instead of reimplementing it:
 
     model_load_from_path(bundle) -> session_create(model, input_sr, atten_lim_db)
     -> get_frame_length() -> process_frame(in, out) per frame -> reset/free

@@ -28,7 +28,7 @@ dependencies = [
 # resolves extras too, so a bare "hecttor-sdk" that exists in no index makes the
 # whole lock unsatisfiable. It is a manual, out-of-band install:
 #
-#   uv pip install /path/to/your/hecttor_sdk-<version>-<platform>.whl
+#   uv pip install /path/to/hecttor_sdk-<version>-<platform>.whl
 #
 # Without it hecttor_available() reports "hecttor_sdk wheel not installed in
 # this venv" and the UI greys those candidates out — the same path ai-coustics

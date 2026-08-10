@@ -136,7 +136,7 @@ def sha256(path: Path) -> str:
 
 
 def verify(rel: str, dst: Path, want: str) -> bool:
-    """True if the file is what we expect (or unpinned). Prints its own verdict."""
+    """True if the file is what is expected (or unpinned). Prints its own verdict."""
     if not want:
         print(f"      {rel}: no pinned hash for this platform, not verified")
         return True

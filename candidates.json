@@ -182,7 +182,7 @@
   },
   {
     "id": "dtln+hecttor-coda-vi",
-    "label": "DTLN → Hecttor coda-vi-1.0 (the original combo)",
+    "label": "DTLN → Hecttor coda-vi-1.0",
     "chain": [{ "proc": "dtln" }, { "proc": "hecttor", "model": "coda-vi-1.0" }]
   }
 ]

@@ -1,8 +1,8 @@
 # NC Bench UI
 
 A dev web UI for A/B-testing noise-cancellation candidates on real audio:
-record a **phone call** (outbound — it rings you), a **web call** (browser
-mic), or **upload a file** — then run the recording through every ticked NC
+record a **phone call** (outbound — the bench places it), a **web call**
+(browser mic), or **upload a file** — then run the recording through every ticked NC
 candidate (singles or chains) and compare **STT transcripts**, **waveforms**,
 and **playable / downloadable output audio** side by side. Every run is stored
 and revisitable from the history table.
@@ -22,11 +22,12 @@ of them from its publisher's own URL into the gitignored `models/`, and checks a
 pinned SHA-256 on each. `--verify` re-hashes what is already on disk. See
 [Models and licences](#models-and-licences) for who owns what.
 
-Two candidate families need credentials you bring yourself, and both degrade
-politely — the UI greys them out with a reason and everything else still runs:
+Two candidate families need credentials that are not supplied here. Both
+degrade politely — the UI greys them out with a reason and everything else
+still runs:
 
 - **Hecttor** (`hecttor-*`) needs its proprietary SDK wheel, which is *not*
-  redistributed here and is not on PyPI. With your own licence:
+  redistributed here and is not on PyPI. With a valid licence:
   `uv pip install /path/to/hecttor_sdk-<version>-<platform>.whl`, then set
   `HECTTOR_API_KEY`.
 - **ai-coustics** (`aic-sdk`) needs a self-service trial key in
@@ -42,13 +43,13 @@ endpoint, Hecttor key + default model/weight/rate/chunk, port.
 ## Using it
 
 1. Pick a **source**:
-   - **Phone call** — press Start and **your phone rings**. The bench places an
+   - **Phone call** — press Start and **the phone rings**. The bench places an
      outbound SIP call to `LK_SIP_CALL_TO` over `LK_SIP_TRUNK_ID` (both `.env`)
      into a room it owns. Pick up, talk, then either **hang up or press Stop** —
      both end the recording and run NC. See *Phone mode* below.
-   - **Web call** — Start joins a fresh room and publishes your mic with
-     browser echo-cancellation / noise-suppression / AGC **disabled** (we want
-     the noise to survive so the NC has something to do).
+   - **Web call** — Start joins a fresh room and publishes the microphone with
+     browser echo-cancellation / noise-suppression / AGC **disabled**, so the
+     noise survives for the NC to act on.
    - **Upload** — any format ffmpeg can read; goes straight to processing.
 2. Tick **candidates** (at least one; "No NC" is the control). Chains run
    processors in order — edit `candidates.json` to add combos or Hecttor
@@ -93,7 +94,7 @@ measured rather than quoted — and is what `algo_delay_ms` reports.
 
 | Candidate ids | What | Rate | Delay | Source |
 |---|---|---|---|---|
-| `hecttor-*` (coda-vi, coda, crest-1/2, mist, weight 0.75) | commercial SDK; the only offline voice-isolation model wired here | 16 k | 20 ms | your own licensed wheel (not shipped) |
+| `hecttor-*` (coda-vi, coda, crest-1/2, mist, weight 0.75) | commercial SDK; the only offline voice-isolation model wired here | 16 k | 20 ms | separately licensed wheel (not shipped) |
 | `dpdfnet2-8k`, `dpdfnet8-8k` | **native 8 kHz** — cleans in the PSTN band, before any upsampling | 8 k | 40 ms | HF `Ceva-IP/DPDFNet` |
 | `dpdfnet2`, `dpdfnet8`, `dpdfnet-baseline` | the same family at 16 kHz, for the band-split comparison | 16 k | 40 ms | HF `Ceva-IP/DPDFNet` |
 | `gtcrn` | 23.7 k parameters — the "how cheap can this get" data point | 16 k | 16 ms | sherpa-onnx release |
@@ -151,7 +152,7 @@ artifact on top of artifact, and the point is to measure how much that costs.
 | `dpdfnet2+hush` | control for the above — same pair, suppression at 16 kHz instead of 8 kHz. If it ties, the band-split is not earning its 40 ms |
 | `fastenhancer-t+hecttor-coda-vi` | 16 kHz stacking with the cheapest suppressor available |
 | `gtcrn+hush` | the fully-open floor: cheapest open suppressor plus the open isolator |
-| `dtln+hecttor-coda-vi` | a long-standing pairing, kept as a reference point |
+| `dtln+hecttor-coda-vi` | an open suppressor ahead of the commercial isolator, as a reference point |
 
 Isolation-before-suppression is deliberately absent: the isolator is the more
 fragile model, and feeding it raw audio is the point of the band-split test.
@@ -185,7 +186,7 @@ authenticate through the live Cloud room. Check one headlessly with
 Any `EnhancerModel` name the installed ai-coustics plugin exposes works as a
 `"lk_model": "AIC:<NAME>"` entry in `candidates.json`.
 
-Two constraints the code already handles, worth knowing if you extend this:
+Two constraints the code already handles, worth knowing before extending it:
 
 - **Both plugins must be imported on the main thread** (`lk_cloud.preload()` at
   server startup). A job-thread import fails silently and the stream degrades to
@@ -198,8 +199,8 @@ Two constraints the code already handles, worth knowing if you extend this:
 ## Phone mode
 
 **Outbound**: Start creates a room, dispatches the recorder into it, then places a
-SIP participant on `LK_SIP_TRUNK_ID` dialling `LK_SIP_CALL_TO`. Your phone rings;
-you answer and talk.
+SIP participant on `LK_SIP_TRUNK_ID` dialling `LK_SIP_CALL_TO`. The phone rings;
+answering it starts the recording.
 
 | `.env` | meaning |
 |---|---|
@@ -220,12 +221,11 @@ Details worth knowing:
 - **Hang up = press Stop.** The job watches for the SIP participant leaving and
   trips the same stop flag, so a call that ends by itself still runs NC. Pressing
   Stop deletes the room, which hangs up the leg.
-- **`LK_AGENT_NAME` deliberately does *not* match your inbound SIP dispatch rule**
-  any more. Outbound dispatches explicitly, so sharing that name would only mean
-  the bench would take your production agent's real inbound calls (LiveKit
-  load-balances jobs across every worker registered under a name). Because
-  outbound dispatches explicitly, the bench and a production agent can run
-  against the same project at the same time.
+- **`LK_AGENT_NAME` deliberately does *not* match the project's inbound SIP
+  dispatch rule.** LiveKit load-balances jobs across every worker registered
+  under a name, so sharing one would let the bench receive real inbound calls
+  meant for another agent. Outbound mode dispatches the recorder explicitly, so
+  the bench and another agent can share a project safely.
 
 ## Scoring
 
@@ -236,7 +236,7 @@ Every run is scored automatically (`nc_bench/scoring.py`); results live in
 |---|---|---|
 | **DNSMOS P.835** (SIG/BAK/OVRL) | Microsoft's reference-free MOS predictor (`models/dnsmos/sig_bak_ovr.onnx`), on the input and every output | The workhorse. Differences < ~0.1 MOS are noise. SIG = did the voice survive, BAK = did the background die |
 | **Gap-RMS / noise reduction (dB)** | silero-VAD finds *confident* no-speech windows on the raw input (prob < 0.15 sustained ≥ 1 s, edges trimmed); every output is measured in those same windows; shown as dB vs input | Trustworthy when it speaks; abstains ("n/a") when VAD finds no confident gaps — notably under heavy background *speech*, where DNSMOS-BAK carries the comparison instead. Sanity check: the passthrough candidate should read ≈ 0 dB |
-| **Measured band** (kHz) | The rolloff edge — highest frequency still carrying signal — on the input at its native rate and on every output at 16 kHz | The file's sample rate can't tell you this: LiveKit hands every track over at 48 kHz, so an 8 kHz phone call and a mic recording look identical in the header. ~4 kHz = PSTN, ~7 kHz = wideband trunk, 15 kHz+ = mic. Read it before trusting any comparison involving the 8 kHz models |
+| **Measured band** (kHz) | The rolloff edge — highest frequency still carrying signal — on the input at its native rate and on every output at 16 kHz | The file's sample rate does not reveal this: LiveKit hands every track over at 48 kHz, so an 8 kHz phone call and a mic recording look identical in the header. ~4 kHz = PSTN, ~7 kHz = wideband trunk, 15 kHz+ = mic. Read it before trusting any comparison involving the 8 kHz models |
 | **WER** | Word error rate vs the optional **reference script** field — read a fixed script during a test call (or provide the truth for an upload) | The only exact metric here, and the most decision-relevant (the NC feeds STT). Only as good as the script matching what was actually said |
 | **Latency** | Per candidate: `init_ms` (chain construction), `block_ms_mean/p95` (processing per 20 ms block — must be ≪ 20 ms to be live-viable), `algo_delay_ms` (structural buffering the chain adds regardless of CPU) | Measured, not modeled — `algo_delay_ms` sums each stage's framing plus its measured internal lookahead (see *Output shift* above). Whole-file stages (`rnnoise-*`) report no per-block numbers rather than a flattering ~0 ms. Live-rail (cloud) candidates have no latency row: they process inside the rtc stack in real time |
 
@@ -255,8 +255,8 @@ apples-to-apples number available.
 Nothing in this table is stored in this repository. `scripts/fetch_models.py`
 downloads each file from the publisher's own URL into the gitignored `models/`
 and verifies a pinned SHA-256. Licences below are the publishers' own, recorded
-here as attribution and as a pointer — check them yourself before you rely on
-one, and note that a licence can change under you.
+here as attribution and as a pointer — verify them independently before relying
+on one, and note that a licence can change.
 
 | Used for | Project | Licence |
 |---|---|---|
@@ -283,9 +283,9 @@ contains only the code that calls them — no SDK, no binary, no key:
 ## Notes / limits
 
 - **Dev tool**: no auth on any endpoint; single session at a time. It binds
-  `PORT` on all interfaces and will happily serve anyone who can reach it — keep
-  it on localhost or behind something.
-- Phone mode records **only the far end (you, on the phone)** — the subscriber
+  `PORT` on all interfaces and serves anyone who can reach it, so it belongs on
+  localhost or behind a proxy.
+- Phone mode records **only the far end (the phone participant)** — the subscriber
   leg, before any NC. The bench publishes silence back, nothing else.
 - Hecttor init errors (e.g. the machine-bound installation ID going stale
   after an OS update — files under `~/Library/Application Support/Hecttor/`)

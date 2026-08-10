@@ -1,4 +1,4 @@
-"""Does "VAD vs my marked speech" actually mean what the column says?
+"""Does "VAD vs marked speech" actually mean what the column says?
 
 Worth a script because the number is a single percentage that will be used to
 rank candidates, and every way it can be wrong still produces a plausible
@@ -35,7 +35,7 @@ def main() -> None:
     print(f"OK   identical spans      agree {s['agree']:.3f}  miss {s['miss_s']}  fa {s['fa_s']}")
 
     # --- 2. VAD found nothing: all marked speech is missed, no false alarms.
-    #        This is the case that matters most — a chain that silences you.
+    #        This is the case that matters most — a chain that silences the speaker.
     s = vad.score_spans(TRUTH, [], DUR)
     assert close(s["miss_s"], MARKED), s
     assert close(s["fa_s"], 0.0), s
@@ -56,7 +56,7 @@ def main() -> None:
     assert close(s["fa_s"], 0.0), s
     print(f"OK   half of each region  agree {s['agree']:.3f}  miss {s['miss_s']}  fa {s['fa_s']}")
 
-    # --- 5. disjoint: VAD speech exactly where I marked silence ---
+    # --- 5. disjoint: VAD speech exactly where the marks say silence ---
     s = vad.score_spans(TRUTH, [[3.5, 5.5]], DUR)
     assert close(s["miss_s"], MARKED), s
     assert close(s["fa_s"], 2.0), s

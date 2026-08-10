@@ -103,7 +103,7 @@ async def main() -> None:
     during_ring = sum(len(x) for x in b.raw) / RATE
     # capture_frame queues, so let the wire drain before opening the gate —
     # otherwise queued ringback lands after the answer and the test blames the
-    # gate for its own pacing. A real ringback simply stops when you pick up.
+    # gate for its own pacing. A real ringback simply stops when the call is answered.
     await asyncio.sleep(3.0)
     drained = sum(len(x) for x in b.raw) / RATE
 
