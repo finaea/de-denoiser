@@ -100,6 +100,47 @@ _EXPECTED_LAG_MS = {
 }
 
 
+def check_single_threaded(tmp: Path, candidates: list[dict]) -> None:
+    """Every streaming chain must do its work on the calling thread.
+
+    pipeline.py bills CPU with time.thread_time(), because the server runs
+    candidates concurrently in threads of one process and a process-wide clock
+    would charge each chain for its neighbours. That only reads the FULL cost
+    while every ORT session stays pinned to one thread: measured unpinned,
+    gtcrn put 80% of its work on ORT's own workers, so thread_time() saw a fifth
+    of the truth and the cheapest-looking model was the most expensive one.
+
+    Dropping processors/base.py ort_options() would reintroduce that silently,
+    which is exactly the kind of thing an assert is for.
+    """
+    import time
+
+    from nc_bench.pipeline import run_chain
+
+    src = tmp / "thread_input.wav"
+    make_input(src)
+
+    by_id = {c["id"]: c for c in candidates}
+    for cid in ("gtcrn", "dpdfnet2", "fastenhancer-t", "dtln", "hush"):
+        cand = by_id.get(cid)
+        if not cand or not chain_available(cand["chain"])[0]:
+            continue
+        out = tmp / f"thread_{cid}.wav"
+        p0, t0 = time.process_time(), time.thread_time()
+        run_chain(src, cand["chain"], out)
+        proc_cpu, thread_cpu = time.process_time() - p0, time.thread_time() - t0
+        share = thread_cpu / proc_cpu if proc_cpu > 1e-6 else 1.0
+        # 0.85 not 1.0: model load spins short-lived helper threads, and this
+        # runs on 3 s of audio where that overhead is proportionally largest
+        assert share >= 0.85, (
+            f"{cid}: only {share:.0%} of its CPU ran on the calling thread — "
+            f"an ORT session is not using processors/base.py ort_options(), so "
+            f"pipeline.py's cost.cpu_ms undercounts by ~{1 / share:.1f}x"
+        )
+        print(f"OK   1-thread {cid}: {share:.0%} of CPU on the calling thread "
+              f"({thread_cpu * 1000:.0f} of {proc_cpu * 1000:.0f} ms)")
+
+
 def check_alignment(tmp: Path, candidates: list[dict]) -> None:
     """Pin each candidate's output shift against the input.
 
@@ -195,6 +236,7 @@ def main() -> None:
 
     check_spec_reconstruction()
     check_alignment(tmp, candidates)
+    check_single_threaded(tmp, candidates)
 
     # ---- scoring stack ----
     from nc_bench import scoring

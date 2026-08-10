@@ -10,6 +10,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "aiohttp>=3.10",
     "numpy>=1.26",
+    "psutil>=5.9",
     "soundfile>=0.12",
     "soxr>=0.5",
     "onnxruntime>=1.18",

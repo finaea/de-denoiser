@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import config
-from .base import Processor
+from .base import Processor, ort_options
 
 _BLOCK_LEN = 512
 _BLOCK_SHIFT = 128
@@ -34,13 +34,13 @@ class DTLNProcessor(Processor):
     def __init__(self):
         import onnxruntime as ort
 
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3
+        # a fresh options object per session: ORT reads it at construction, and
+        # sharing one across two sessions ties their thread pools together
         self._s1 = ort.InferenceSession(
-            str(config.DTLN_MODEL_DIR / "model_1.onnx"), opts
+            str(config.DTLN_MODEL_DIR / "model_1.onnx"), ort_options()
         )
         self._s2 = ort.InferenceSession(
-            str(config.DTLN_MODEL_DIR / "model_2.onnx"), opts
+            str(config.DTLN_MODEL_DIR / "model_2.onnx"), ort_options()
         )
         self._m1_in = [i.name for i in self._s1.get_inputs()]
         self._m2_in = [i.name for i in self._s2.get_inputs()]

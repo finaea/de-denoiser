@@ -421,7 +421,12 @@ async def _process_run(
                 if not cand["available"]:
                     raise RuntimeError(cand["unavailable_reason"])
                 out_wav = run_dir / f"{cid}.wav"
-                timing = await asyncio.to_thread(run_chain, input_wav, cand["chain"], out_wav)
+                # RSS is process-wide; at concurrency > 1 a neighbour's model
+                # loading at the same moment lands in this chain's delta, so ask
+                # for it only when this is the only chain being built
+                timing = await asyncio.to_thread(
+                    run_chain, input_wav, cand["chain"], out_wav, concurrency == 1
+                )
                 entry.update(timing)
                 entry["output"] = out_wav.name
             await broadcast({"type": "progress", "run_id": run_id, "candidate": cid, "stage": "stt"})

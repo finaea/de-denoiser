@@ -7,6 +7,9 @@ fed sequentially so LSTM/cache state behaves exactly as it would live.
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -31,17 +34,69 @@ def _resample(x: np.ndarray, src: int, dst: int) -> np.ndarray:
     return soxr.resample(x, src, dst).astype(np.float32)
 
 
-def run_chain(input_wav: Path, chain_spec: list[dict], output_wav: Path) -> dict:
-    """Process input through the chain; returns timing/metadata."""
+# Measuring a model's footprint by RSS delta INSIDE this process does not work:
+# the server is long-lived, and ONNX Runtime hands a closed session's arena back
+# to its own pool rather than to the OS, so the next model loads into memory that
+# is already resident. Measured that way gtcrn came out at -3.2 MB. A throwaway
+# process is the only place the delta means what it says.
+_RSS_PROBE = """
+import json, sys
+import psutil
+sys.path.insert(0, sys.argv[1])
+from nc_bench.processors import build_chain
+p = psutil.Process()
+before = p.memory_info().rss
+chain = build_chain(json.loads(sys.argv[2]))
+after = p.memory_info().rss
+for c in chain:
+    c.close()
+print((after - before) / 1e6)
+"""
+
+
+def _model_rss_mb(chain_spec: list[dict]) -> float | None:
+    """RSS the chain's models add, measured in a clean interpreter.
+
+    Costs one process spawn plus one model load, so it is gated on the caller
+    (concurrency 1 only). Never raises: a diagnostic must not fail a run.
+    """
+    root = str(Path(__file__).resolve().parent.parent)
+    try:
+        r = subprocess.run(
+            [sys.executable, "-c", _RSS_PROBE, root, json.dumps(chain_spec)],
+            capture_output=True, text=True, timeout=180,
+        )
+        return round(float(r.stdout.strip().splitlines()[-1]), 1) if r.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def run_chain(
+    input_wav: Path, chain_spec: list[dict], output_wav: Path, measure_rss: bool = False
+) -> dict:
+    """Process input through the chain; returns timing/metadata.
+
+    `measure_rss` spends a subprocess and a second model load to size the
+    models (see _model_rss_mb), so the server only asks for it at concurrency 1
+    — where the run is already the slow, measure-everything-properly setting.
+    """
     audio, rate = load_mono(input_wav)
     duration_s = len(audio) / rate
 
+    model_rss = _model_rss_mb(chain_spec) if measure_rss else None
     init_started = time.perf_counter()
     procs = build_chain(chain_spec)
     init_s = time.perf_counter() - init_started
 
     block_times: list[float] = []  # seconds per 20 ms block, across all stages
     started = time.perf_counter()
+    # thread_time, not process_time: the server runs candidates concurrently in
+    # threads of one process, so a process-wide clock would bill this chain for
+    # its neighbours. It reads the FULL cost only because every ORT session here
+    # is pinned to one thread (processors/base.py ort_options) — unpinned, ORT
+    # does ~80% of the work on its own workers and this would undercount ~5x.
+    # scripts/selfcheck.py check_single_threaded() holds that invariant.
+    cpu_started = time.thread_time()
     try:
         for proc in procs:
             audio = _resample(audio, rate, proc.rate)
@@ -55,6 +110,7 @@ def run_chain(input_wav: Path, chain_spec: list[dict], output_wav: Path) -> dict
             outs.append(proc.flush())
             audio = np.concatenate([o for o in outs if len(o)] or [np.zeros(0, np.float32)])
         proc_s = time.perf_counter() - started
+        cpu_s = time.thread_time() - cpu_started
     finally:
         for proc in procs:
             proc.close()
@@ -78,5 +134,15 @@ def run_chain(input_wav: Path, chain_spec: list[dict], output_wav: Path) -> dict
             # sum of each stage's structural buffering (block/window sizes) —
             # what the chain would add to live audio even on an infinite CPU
             "algo_delay_ms": round(sum(p.algo_delay_ms for p in procs), 1),
+        },
+        # What it costs to RUN, as opposed to how fast it finishes. rtf is wall
+        # clock and flatters anything that spreads over cores; cpu_per_audio_s
+        # is core-seconds per second of audio, so 1/it is how many concurrent
+        # calls one core carries. That is the number that sizes a box.
+        "cost": {
+            "cpu_ms": round(cpu_s * 1000, 1),
+            "cpu_per_audio_s": round(cpu_s / duration_s, 4) if duration_s > 0 else None,
+            # RSS the models added at load: a per-session cost, paid once
+            "model_rss_mb": model_rss,
         },
     }

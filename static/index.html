@@ -13,18 +13,35 @@
   :root {
     color-scheme: dark;
     /* text */
-    --heading: #f0ede6; --body: #c5c2bb; --body-subtle: #8a8781;
-    /* surfaces */
-    --near-black: #141314; --card: #1a1a1a; --card-soft: #1f1f1f;
-    --hover-fill: #2a2a28; --deep: #0a0a0a;
-    /* brand */
-    --brand: #f79f79; --brand-medium: #fbb393; --brand-strong: #da8a63; --brand-soft: #3a281f;
-    /* status */
-    --success: #22c55e; --success-strong: #5ee7a0;
-    --danger: #f43f5e; --danger-strong: #fb7185;
-    --warning: #f59e0b; --fg-warning: #fbbf5a;
-    /* borders + focus */
-    --border: #262626; --border-strong: #444; --focus-ring: 0 0 0 3px #f79f794d;
+    /* --body-subtle carries every 10-11px element on the page (hints, eyebrows,
+       th, .lbl, .pill, card meta), so it is the one token where dimness and
+       small type stack. Lifted off #9c988f: 6.8:1 -> 8.9:1 on the page black. */
+    --heading: #f8f6f1; --body: #d3d0c8; --body-subtle: #b3aea4;
+    /* surfaces: four real steps apart, so a panel reads as raised instead of
+       dissolving into the page the way #1a1a1a on #141314 did */
+    --near-black: #0c0c0e; --card: #17171b; --card-soft: #202026;
+    --hover-fill: #2d2d35; --deep: #050507;
+    /* brand: a real orange, not a peach — the loudest thing on the page */
+    --brand: #ff7a18; --brand-medium: #ff9d4d; --brand-strong: #ff9440;
+    --brand-deep: #d85e00; --brand-soft: #45240d; --brand-wash: #ff7a1814;
+    /* One hue per MEANING, so a colour is a fact rather than decoration:
+         cyan    what the VAD decided (spans, VAD-cut transcripts, VAD controls)
+         violet  what a human said is true (marked speech, reference script)
+         emerald better than the no-NC baseline
+         rose    worse than it, or broken, or clipping
+         gold    caution — a setting that makes this run incomparable
+         steel   model-judged quality (DNSMOS), and the archive
+       Orange stays the brand: actions, the signal itself, the headline metric. */
+    --vad: #22d3ee; --vad-strong: #7ae7f8; --vad-soft: #08323e;
+    --mark: #a78bfa; --mark-strong: #c9b8ff; --mark-soft: #241b47;
+    --success: #10b981; --success-strong: #4ade80; --success-soft: #0b3326;
+    --danger: #f43f5e; --danger-strong: #ff8299; --danger-soft: #3c1320;
+    --warning: #fbbf24; --fg-warning: #fcd34d; --warning-soft: #392a08;
+    --steel: #60a5fa; --steel-strong: #a5c9ff; --steel-soft: #12233f;
+    /* buttons + borders + focus */
+    --btn: #1f1e24; --btn-edge: #3b3a45;
+    --border: #2a2a31; --border-strong: #4d4c58;
+    --focus-ring: 0 0 0 3px #ff7a1840;
     /* type */
     --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
     --mono: "Chivo Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -33,7 +50,13 @@
   body {
     margin: 0; position: relative;
     font: 13px/1.5 var(--sans);
-    background: var(--near-black); color: var(--body);
+    color: var(--body);
+    /* fixed so the wash stays anchored to the viewport corner instead of
+       sliding away on a page that is several screens tall */
+    background-color: var(--near-black);
+    background-image: radial-gradient(1100px 460px at 8% -12%, #ff7a1a16, transparent 62%),
+                      radial-gradient(900px 420px at 100% 0%, #22d3ee0a, transparent 60%);
+    background-attachment: fixed;
     -webkit-font-smoothing: antialiased;
   }
   /* grain: the one thing that keeps a flat near-black from reading as a void */
@@ -42,26 +65,36 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.52' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-repeat: repeat; background-size: 260px 260px;
   }
-  ::selection { background: var(--brand); color: var(--near-black); }
+  ::selection { background: var(--brand); color: #140700; }
   ::-webkit-scrollbar { width: 9px; height: 9px; }
   ::-webkit-scrollbar-track { background: var(--deep); }
   ::-webkit-scrollbar-thumb { background: var(--hover-fill); border: 2px solid var(--deep); }
-  ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--brand-deep); }
 
   h1 {
     margin: 0; font: 700 13px/1 var(--mono); letter-spacing: .14em;
     text-transform: uppercase; color: var(--heading);
     display: inline-flex; align-items: center; gap: 9px;
   }
-  h1::before { content: ""; width: 16px; height: 2px; background: var(--brand); }
-  /* every section label is an eyebrow: mono, uppercase, peach tick. Absolute so
-     the tick survives the headings that are flex rows with a button in them. */
+  h1::before {
+    content: ""; width: 18px; height: 3px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--brand-medium), var(--brand));
+    box-shadow: 0 0 12px #ff7a18aa;
+  }
+  /* Every section label is an eyebrow: mono, uppercase, coloured tick. The tick
+     takes the panel's own --accent, so the four main panels read as four
+     different things at a glance instead of four identical orange headings.
+     Absolute so it survives the headings that are flex rows with a button. */
+  /* 700 not 500: Chivo Mono's 500 is barely separable from its 400 at these
+     sizes. And .07em not .12em — 12% of the em is enough tracking to stop a long
+     label like "REFERENCE SCRIPT USED FOR THIS RUN" reading as a word at all. */
   h2 {
     margin: 0 0 9px; position: relative; padding-left: 15px;
-    font: 500 11px/1.4 var(--mono); letter-spacing: .12em;
+    font: 700 11px/1.4 var(--mono); letter-spacing: .07em;
     text-transform: uppercase; color: var(--body-subtle);
   }
-  h2::before { content: ""; position: absolute; left: 0; top: .55em; width: 9px; height: 1px; background: var(--brand); }
+  h2::before { content: ""; position: absolute; left: 0; top: .5em; width: 9px; height: 2px;
+               border-radius: 1px; background: var(--accent, var(--brand)); }
   h2 b, h2 .lit { color: var(--heading); font-weight: 500; }
   /* the control cluster some headings carry — opts out of the eyebrow casing */
   .h2tools { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--body-subtle);
@@ -71,7 +104,13 @@
   header {
     display: flex; align-items: center; gap: 10px; padding: 13px 20px;
     border-bottom: 1px solid var(--border); position: sticky; top: 0;
-    background: var(--near-black); z-index: 20; flex-wrap: wrap;
+    background: #0c0c0eee; backdrop-filter: blur(10px);
+    z-index: 20; flex-wrap: wrap;
+  }
+  /* the one hairline that says "this is the orange app" before you read a word */
+  header::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+    background: linear-gradient(90deg, var(--brand), #ff7a1800 34%, transparent);
   }
   .layout { display: flex; gap: 16px; padding: 16px 20px 64px; align-items: flex-start;
             position: relative; z-index: 1; }
@@ -85,44 +124,108 @@
     display: flex; flex-direction: column; gap: 12px;
   }
   main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
-  .box { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+  .box {
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px;
+    box-shadow: inset 0 1px 0 #ffffff0a, 0 14px 30px -28px #000;
+  }
+  /* The four main panels each own a hue — the same one their eyebrow tick uses.
+     Signal is orange, anything the VAD produced is cyan, the leaderboard is gold,
+     the archive is steel. An inset shadow rather than a border-top so the 6px
+     radius keeps its corners. */
+  #tlBox      { --accent: var(--brand); }
+  #resultsBox { --accent: var(--vad); }
+  #rankBox    { --accent: var(--warning); }
+  #histBox    { --accent: var(--steel); }
+  #tlBox, #resultsBox, #rankBox, #histBox {
+    box-shadow: inset 0 2px 0 var(--accent), 0 14px 30px -28px #000;
+  }
 
   /* square, mono, uppercase — every button on the page is a Pure button */
   button {
     border: 0; border-radius: 0; cursor: pointer;
     font: 700 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
-    padding: 12px 16px; color: var(--body); background: #242320;
-    box-shadow: inset 0 0 0 1px #33322e;
+    padding: 12px 16px; color: var(--body); background: var(--btn);
+    box-shadow: inset 0 0 0 1px var(--btn-edge);
     display: inline-flex; align-items: center; justify-content: center; gap: 7px;
     transition: background .16s, color .16s, box-shadow .16s;
   }
-  button:hover:not(:disabled) { background: var(--hover-fill); color: var(--heading); }
+  button:hover:not(:disabled) {
+    background: var(--hover-fill); color: var(--heading);
+    box-shadow: inset 0 0 0 1px #ff7a1866;
+  }
   button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--brand), var(--focus-ring); }
-  button:disabled { opacity: .38; cursor: not-allowed; }
-  button.primary { background: var(--brand); color: var(--near-black); box-shadow: none; }
-  button.primary:hover:not(:disabled) { background: var(--brand-strong); color: var(--near-black); }
-  button.danger { background: var(--danger); color: #fff; box-shadow: none; }
-  button.danger:hover:not(:disabled) { background: var(--danger-strong); color: var(--near-black); }
+  button:disabled { opacity: .34; cursor: not-allowed; }
+  /* a filled button keeps its glow at 34% opacity and still reads as lit — kill
+     the shadow so "disabled" is unambiguous on Start/Stop, which alternate */
+  button.primary:disabled, button.danger:disabled, #btnMarkDone:disabled { box-shadow: none; }
+  button.primary {
+    background: linear-gradient(180deg, var(--brand-medium), var(--brand));
+    color: #170800; box-shadow: 0 6px 18px -8px #ff7a18cc;
+  }
+  button.primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, #ffb066, var(--brand-strong));
+    color: #170800; box-shadow: 0 8px 22px -6px #ff7a18;
+  }
+  button.danger {
+    background: linear-gradient(180deg, var(--danger-strong), var(--danger));
+    color: #1a0409; box-shadow: 0 6px 18px -8px #f43f5ecc;
+  }
+  button.danger:hover:not(:disabled) {
+    background: linear-gradient(180deg, #ff9db0, var(--danger-strong));
+    color: #1a0409; box-shadow: 0 8px 22px -6px #f43f5e;
+  }
   .btnrow { display: flex; gap: 8px; }
   .btnrow button { flex: 1; }
   button.mini { padding: 6px 10px; font-size: 10px; letter-spacing: .07em; }
-  button.mini.primary { color: var(--near-black); }
+  button.mini.primary { color: #170800; }
   /* one of these sits in every history row: destructive, but not twenty red
      blocks loud. It earns its fill on hover, where the intent is real. */
   button.mini.danger {
     background: none; color: var(--body-subtle); box-shadow: inset 0 0 0 1px var(--border);
   }
-  button.mini.danger:hover:not(:disabled) { background: var(--danger); color: #fff; box-shadow: none; }
+  button.mini.danger:hover:not(:disabled) {
+    background: var(--danger); color: #fff; box-shadow: 0 6px 16px -8px #f43f5e;
+  }
+  /* A control wears the colour of the thing it acts on: the two VAD buttons are
+     cyan like the spans they redraw, the mark-my-speech cluster is violet like
+     the ribbon it paints. Ids, not classes — the mark bar is rebuilt as innerHTML
+     on every click, so anything bound by hand would not survive. */
+  #btnVad, #btnSeg { color: var(--vad-strong); box-shadow: inset 0 0 0 1px #22d3ee55; }
+  #btnVad:hover:not(:disabled), #btnSeg:hover:not(:disabled) {
+    background: var(--vad-soft); color: #d6fbff; box-shadow: inset 0 0 0 1px var(--vad);
+  }
+  #btnMark, #btnMarkUndo, #btnMarkClear, #btnMarkCancel {
+    color: var(--mark-strong); box-shadow: inset 0 0 0 1px #a78bfa55;
+  }
+  #btnMark:hover, #btnMarkUndo:hover, #btnMarkClear:hover, #btnMarkCancel:hover {
+    background: var(--mark-soft); color: #eee7ff; box-shadow: inset 0 0 0 1px var(--mark);
+  }
+  #btnMarkDone { background: linear-gradient(180deg, var(--mark-strong), var(--mark));
+                 color: #16092e; box-shadow: 0 6px 18px -8px #a78bfacc; }
+  #btnMarkDone:hover { background: linear-gradient(180deg, #ddd2ff, var(--mark-strong));
+                       box-shadow: 0 8px 22px -6px #a78bfa; }
 
+  /* A status you read from across the room: hue + a dot, not just a word. */
   .pill {
-    display: inline-block; padding: 4px 9px; border-radius: 4px;
-    font: 500 10px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase;
-    background: var(--card); border: 1px solid var(--border); color: var(--body-subtle);
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 4px;
+    font: 700 10px/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase;
+    background: var(--card-soft); border: 1px solid var(--border); color: var(--body-subtle);
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  .pill.ok { border-color: var(--success); color: var(--success-strong); background: #1b3424; }
-  .pill.warn { border-color: var(--warning); color: var(--fg-warning); background: #3b2e18; }
-  .pill.err { border-color: var(--danger); color: var(--danger-strong); background: #3b2024; }
+  .pill::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; opacity: .85; flex: none;
+  }
+  .pill.ok   { border-color: var(--success); color: var(--success-strong); background: var(--success-soft); }
+  .pill.warn { border-color: var(--warning); color: var(--fg-warning);     background: var(--warning-soft); }
+  .pill.err  { border-color: var(--danger);  color: var(--danger-strong);  background: var(--danger-soft); }
+  .pill.busy { border-color: var(--warning); color: var(--fg-warning);     background: var(--warning-soft); }
+  .pill.rec  { border-color: var(--danger);  color: var(--danger-strong);  background: var(--danger-soft); }
+  /* only while tape is actually rolling — a pulse anywhere else is just noise */
+  .pill.rec::before, .pill.busy::before { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .18; } }
+  #pillRoom  { border-color: #2f3a46; color: var(--steel-strong); background: #101822; }
+  #pillTimer { border-color: #3a3323; color: var(--brand-medium); background: #1d1610; }
   #status { font: 11px/1.4 var(--mono); color: var(--body-subtle); }
   #status.err { color: var(--danger-strong); }
 
@@ -135,13 +238,13 @@
   .hint { font-size: 11px; line-height: 1.55; color: var(--body-subtle); margin-top: 9px; }
   .field { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
   .field label, .lbl {
-    font: 500 10px/1.4 var(--mono); letter-spacing: .12em;
+    font: 700 10px/1.4 var(--mono); letter-spacing: .07em;
     text-transform: uppercase; color: var(--body-subtle);
   }
-  code { font: .92em var(--mono); color: var(--brand-medium); background: #f79f7912;
-         padding: 1px 4px; border-radius: 3px; }
-  a { color: var(--brand); text-decoration-color: #f79f7955; text-underline-offset: 2px; }
-  a:hover { color: var(--brand-medium); }
+  code { font: .92em var(--mono); color: var(--brand-medium); background: var(--brand-wash);
+         box-shadow: inset 0 0 0 1px #ff7a1826; padding: 1px 4px; border-radius: 3px; }
+  a { color: var(--brand-strong); text-decoration-color: #ff7a1866; text-underline-offset: 2px; }
+  a:hover { color: var(--brand-medium); text-decoration-color: var(--brand); }
 
   /* inputs: 6px, deepest well, peach focus ring */
   select, textarea, input[type=text], input[type=number], input[type=file] {
@@ -155,15 +258,22 @@
   }
   select { cursor: pointer; padding: 5px 6px; }
   textarea { width: 100%; resize: vertical; color: var(--heading); }
-  textarea::placeholder { color: #6b6862; }
+  textarea::placeholder { color: #78746d; }
   .num { width: 68px; }
+  /* the threshold boxes belong to the cyan spans they redraw, so they focus cyan */
+  #vadFields input:focus, #vadFields select:focus {
+    border-color: var(--vad); box-shadow: 0 0 0 3px #22d3ee38;
+  }
   input[type=file] { width: 100%; color: var(--body-subtle); padding: 6px; }
   input[type=file]::file-selector-button {
     border: 0; border-radius: 0; margin-right: 10px; cursor: pointer;
     font: 700 10px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase;
-    padding: 7px 11px; background: #242320; color: var(--body); box-shadow: inset 0 0 0 1px #33322e;
+    padding: 7px 11px; background: var(--btn); color: var(--body);
+    box-shadow: inset 0 0 0 1px var(--btn-edge);
   }
-  input[type=file]::file-selector-button:hover { background: var(--hover-fill); color: var(--heading); }
+  input[type=file]::file-selector-button:hover {
+    background: var(--hover-fill); color: var(--heading); box-shadow: inset 0 0 0 1px #ff7a1866;
+  }
 
   /* these heights are the 1x defaults, in effect until sizeCanvas() sets an
      inline height (which outranks a class rule) from the height multiplier.
@@ -172,10 +282,18 @@
                     border: 1px solid var(--border); border-radius: 6px; }
   canvas.wave { width: 100%; height: 64px; display: block; background: var(--deep);
                 border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
-  canvas.wave:hover { border-color: var(--brand); }
+  canvas.wave:hover { border-color: var(--brand); box-shadow: 0 0 0 3px #ff7a1826; }
 
   .cand-card { background: var(--near-black); border: 1px solid var(--border); border-radius: 6px;
-               padding: 12px 14px; margin-top: 10px; }
+               padding: 12px 14px; margin-top: 10px;
+               border-left: 3px solid var(--card-soft); transition: border-color .16s; }
+  .cand-card:hover { border-left-color: var(--border-strong); }
+  /* the two cards that are not candidates: the untouched signal every score is
+     measured against, and the passthrough leg every Δ is measured against */
+  .cand-card.input { border-left-color: var(--brand); background: #100c08; }
+  .cand-card.input .name { color: var(--brand-medium); }
+  #card-none { border-left-color: var(--steel); }
+  #card-none .name { color: var(--steel-strong); }
   .cand-card .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .cand-card .name {
     font: 700 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase;
@@ -185,9 +303,13 @@
   .cand-card .meta b { color: var(--body); font-weight: 500; }
   .cand-card .stt {
     margin: 9px 0; padding: 10px 11px; background: var(--deep);
-    border: 1px solid var(--border); border-radius: 6px; color: var(--heading);
+    border: 1px solid var(--border); border-left: 2px solid var(--border-strong);
+    border-radius: 6px; color: var(--heading);
     font: 12px/1.6 var(--mono); white-space: pre-wrap;
   }
+  /* cyan edge = this text came back turn-by-turn from the VAD cut, not from one
+     request over the whole file. Same cyan as the spans that produced it. */
+  .cand-card .stt.seg { border-left-color: var(--vad); background: #05121580; }
   .cand-card .stt.empty { color: var(--body-subtle); font-style: italic; }
   .cand-card .err { color: var(--danger-strong); font: 11px/1.5 var(--mono); margin: 7px 0; }
   /* the one control the browser draws for us. Thirty-five stacked native players
@@ -201,24 +323,30 @@
   audio::-webkit-media-controls-time-remaining-display { color: var(--body); }
   .cand-card .dl { font: 11px/1.5 var(--mono); margin-top: 4px; }
   /* the wells that quote a run back at you: script, VAD params, transcripts */
-  .well { background: var(--deep); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
-  .cap { font: 500 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-         color: var(--body-subtle); margin-bottom: 5px; }
-  .cap .note { text-transform: none; letter-spacing: .02em; }
+  .well { background: var(--deep); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
+          border-left: 2px solid var(--accent, var(--border-strong)); }
+  /* the script is a human saying what was true — same violet as the marked
+     speech. The thresholds are the machine's opinion — same cyan as the spans. */
+  #scriptUsed { --accent: var(--mark); }
+  #vadBar     { --accent: var(--vad); }
+  .cap { font: 700 10px/1.4 var(--mono); letter-spacing: .07em; text-transform: uppercase;
+         color: var(--accent, var(--body-subtle)); margin-bottom: 5px; }
+  .cap .note { text-transform: none; letter-spacing: .02em; color: var(--body-subtle); }
   .row { display: flex; align-items: center; gap: 8px; }
   .vadfield { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--body-subtle); }
 
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
   th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border);
            font-variant-numeric: tabular-nums; }
-  th { font: 500 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-       color: var(--body-subtle); }
+  th { font: 700 10px/1.4 var(--mono); letter-spacing: .07em; text-transform: uppercase;
+       color: var(--body-subtle); border-bottom-color: var(--border-strong); }
   td { color: var(--body); }
   tr.run, tr.rank { cursor: pointer; }
   tr.rank:hover td { background: var(--card-soft); color: var(--heading); }
   tr.run:hover td { background: var(--card-soft); }
-  tr.run.sel td { background: var(--hover-fill); color: var(--heading); }
-  tr.run.sel td:first-child { box-shadow: inset 2px 0 0 var(--brand); }
+  tr.run:hover td:first-child { box-shadow: inset 2px 0 0 var(--brand-deep); }
+  tr.run.sel td { background: #241505; color: var(--heading); }
+  tr.run.sel td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
   .spin { display: inline-block; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -233,8 +361,24 @@
   #histBox { overflow-x: auto; }
   #histBox table { min-width: 720px; }
   #histBox td:first-child, #histBox th:first-child { white-space: nowrap; }
-  #rankings .catlabel { font: 500 10px/1.4 var(--mono); letter-spacing: .1em;
-                        text-transform: uppercase; color: var(--body); margin-bottom: 5px; }
+  /* Each ranking table carries the hue of what it measures — violet for the two
+     scored against a human's marks, steel for DNSMOS, emerald for noise, orange
+     for WER, gold for latency. Nine identical grey tables were impossible to
+     tell apart at a glance; now the family is readable before the label is. */
+  #rankings .catlabel {
+    font: 700 10px/1.4 var(--mono); letter-spacing: .07em; text-transform: uppercase;
+    color: var(--body); margin-bottom: 5px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #rankings .catlabel::before {
+    content: ""; width: 7px; height: 7px; border-radius: 2px; flex: none;
+    background: var(--accent, var(--brand)); box-shadow: 0 0 8px -1px var(--accent, var(--brand));
+  }
+  #rankings table { border-top: 1px solid var(--border); }
+  #rankings .pos { color: var(--body-subtle); }
+  /* the winner of each category, called out rather than left as row one of nine */
+  #rankings tr.rank.top td { background: #ffffff07; }
+  #rankings tr.rank.top .pos { color: var(--accent, var(--brand)); font-weight: 700; }
 
   /* jump rail: the page is one long column and the sections that matter are far
      apart once a run has 35 candidate cards between them */
@@ -244,6 +388,16 @@
   }
   nav.rail button {
     width: 40px; height: 40px; padding: 0; font-size: 14px; line-height: 1;
+  }
+  /* each jump button lights up in the colour of the panel it lands on */
+  nav.rail button[data-jump="resultsBox"]:hover {
+    color: var(--vad-strong); box-shadow: inset 0 0 0 1px #22d3ee66; background: var(--vad-soft);
+  }
+  nav.rail button[data-jump="rankBox"]:hover {
+    color: var(--fg-warning); box-shadow: inset 0 0 0 1px #fbbf2466; background: var(--warning-soft);
+  }
+  nav.rail button[data-jump="histBox"]:hover {
+    color: var(--steel-strong); box-shadow: inset 0 0 0 1px #60a5fa66; background: var(--steel-soft);
   }
 </style>
 </head>
@@ -342,7 +496,7 @@
     <canvas id="timeline" class="timeline" width="1600" height="280"></canvas>
     <div class="hint" id="tlHint">Live RMS of the subscribed track (20 ms windows).
       Scale/height apply to every waveform below too — <b>click any of them to play
-      from that point</b>; an orange playhead tracks it.</div>
+      from that point</b>; a white playhead tracks it.</div>
   </div>
 
   <div class="box" id="resultsBox">
@@ -369,7 +523,7 @@
       <div id="scriptUsedText" class="well"
         style="font:12px/1.6 var(--mono);white-space:pre-wrap;color:var(--heading)"></div>
     </div>
-    <!-- The thresholds that produced THIS run's green spans. Saved per run, so a
+    <!-- The thresholds that produced THIS run's cyan spans. Saved per run, so a
          history re-run at different settings is visible here instead of quietly
          making two runs' spans incomparable. -->
     <div id="vadBar" style="display:none;margin-bottom:12px">
@@ -384,7 +538,7 @@
             Speech the VAD missed is never transcribed, so WER becomes production-real.">✂ STT by VAD turns</button>
           <span class="hint" style="margin:0;flex:1 1 260px">Same model and state machine ai-handler
             runs. Production cuts the call into turns with this and sends <b>one turn
-            per STT request</b> — the green spans are what each candidate leaves for
+            per STT request</b> — the cyan spans are what each candidate leaves for
             the recogniser. Re-running touches nothing but the spans.</span>
         </div>
       </div>
@@ -430,18 +584,31 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
 // A canvas cannot read CSS custom properties, so the design tokens the waveforms
 // need are repeated here. Keep in sync with :root above.
 const C = {
-  deep: "#0a0a0a",
-  wave: "#f79f79",          // the signal itself — the one thing the eye should find
-  clip: "#f43f5e",          // columns cut off by the current height
-  playing: "#f0ede6",       // playhead, moving
-  paused: "#8a8781",        // playhead, parked
-  readout: "#c5c2bb",
-  caption: "#8a8781",
-  vadFill: "rgba(34,197,94,0.15)",
-  vadEdge: "rgba(34,197,94,0.60)",
-  truth: "rgba(245,158,11,0.85)",
-  truthDrag: "rgba(245,158,11,0.45)",
-  truthWash: "rgba(245,158,11,0.12)",
+  deep: "#050507",
+  axis: "rgba(255,255,255,0.07)",   // centre line, so a silent file is not a void
+  wave: "#ff7a18",          // the signal itself — the one thing the eye should find
+  waveTip: "#ffbe7a",       // the gradient's outer edge; see waveGrad()
+  clip: "#ff2d6f",          // columns cut off by the current height — must NOT
+                            // read as "a loud bit of orange", hence magenta
+  playing: "#ffffff",       // playhead, moving
+  paused: "#6f6c66",        // playhead, parked
+  readout: "#f0ede6",
+  caption: "#9c988f",
+  // cyan = the machine's opinion of where speech is. Was a 15%-alpha green that
+  // vanished under the waveform; now a wash PLUS a solid bar on the bottom edge,
+  // so the spans are legible even where the signal fills the canvas.
+  // The bar carries the span; the wash and the edges only locate it. Weighted the
+  // other way round the spans cover 70% of the canvas and the orange signal —
+  // the thing actually being compared — reads as a detail inside a cyan block.
+  vadFill: "rgba(34,211,238,0.055)",
+  vadEdge: "rgba(34,211,238,0.42)",
+  vadBar: "rgba(34,211,238,0.95)",
+  // violet = a human's opinion of the same thing, along the top edge. Deliberately
+  // nowhere near the orange it used to be — the whole point is telling the two
+  // ribbons apart at a glance.
+  truth: "#a78bfa",
+  truthDrag: "rgba(167,139,250,0.55)",
+  truthWash: "rgba(167,139,250,0.13)",
 };
 const MONO_CV = "'Chivo Mono', ui-monospace, Menlo, monospace";
 const state = {
@@ -475,7 +642,9 @@ function setPhase(p, pillText) {
   state.phase = p;
   const pill = $("pillState");
   pill.textContent = pillText || p;
-  pill.className = "pill " + (p === "recording" ? "ok" : p === "processing" ? "warn" : "");
+  // rose + a pulse while tape rolls, gold while it thinks, plain when idle
+  pill.className = "pill " + (p === "recording" ? "rec"
+    : p === "processing" ? "busy" : p === "armed" ? "busy" : "");
   $("btnStart").disabled = p !== "idle";
   $("btnStop").disabled = !(p === "armed" || p === "recording");
 }
@@ -838,10 +1007,45 @@ function sizeCanvas(cv, baseCss, mul) {
 // ctx.font: a weighted font string ("500 20px …") parses to the weight.
 function plated(ctx, text, x, baseline, size, color) {
   const w = ctx.measureText(text).width;
-  ctx.fillStyle = "rgba(10,10,10,0.78)";
+  ctx.fillStyle = "rgba(5,5,7,0.82)";
   ctx.fillRect(x - 6, baseline - size, w + 12, size + 8);
   ctx.fillStyle = color;
   ctx.fillText(text, x, baseline);
+}
+
+// Canvas text is sized in CANVAS coordinates, and every canvas here is pinned at
+// width=1600 while its CSS width floats with the window. A hardcoded "16px" was
+// therefore not 16px on screen: at a 734 px wide canvas it rendered at 7.3, and
+// it shrank further the wider the window got. Ask for a css size and get the
+// canvas size that actually produces it.
+//
+// The factor is cached because paintWave runs every animation frame while audio
+// plays, across up to 35 canvases, and measuring right after sizeCanvas() has
+// written cv.style.height forces a synchronous layout each time. Every canvas on
+// the page is width:100% of the same column, so one measurement serves them all.
+let cvScale = null;
+function cvFont(cv, cssPx, weight) {
+  if (cvScale == null) {
+    const w = cv.getBoundingClientRect().width;
+    // A detached canvas measures 0 — the export view removes #timeline but the
+    // repaint path still reaches drawTimeline(). Fall back for that one call
+    // WITHOUT caching, or the first real canvas inherits the fallback.
+    if (w) cvScale = cv.width / w;
+  }
+  const px = Math.max(9, Math.round(cssPx * (cvScale ?? 2)));
+  return { px, font: (weight ? weight + " " : "") + px + "px " + MONO_CV };
+}
+
+// The signal is drawn column by column, so a per-column fillStyle would be a
+// string parse per pixel — one gradient object, built once per repaint, is the
+// same cost as a flat colour. Symmetric about the centre so the envelope reads
+// the same above and below zero: hot core, bright tips.
+function waveGrad(ctx, H) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, C.waveTip);
+  g.addColorStop(0.5, C.wave);
+  g.addColorStop(1, C.waveTip);
+  return g;
 }
 
 function drawTimeline() {
@@ -849,26 +1053,31 @@ function drawTimeline() {
   sizeCanvas(tl, REF_HALF_TL, mul);
   const W = tl.width, H = tl.height, mid = H / 2;
   tctx.fillStyle = C.deep; tctx.fillRect(0, 0, W, H);
+  tctx.fillStyle = C.axis; tctx.fillRect(0, mid, W, 1);
   const n = Math.floor(W / WIN_PX);
   const win = state.levels.slice(-n);
+  const grad = waveGrad(tctx, H);
   let clipped = 0;
   win.forEach((l, i) => {
     // x6 pre-gain keeps "1x" at 1x height identical to the original view
     const px = waveGainPx(l.rms / 32768, REF_HALF_TL, mul, 6) * 2;  // backing store is 2x
     const h = Math.max(1, Math.min(px, mid));
     if (px > mid) clipped++;
-    tctx.fillStyle = px > mid ? C.clip : C.wave;
+    tctx.fillStyle = px > mid ? C.clip : grad;
     tctx.fillRect(i * WIN_PX, mid - h, WIN_PX - 1, h * 2);
   });
+  // the timeline is 140 css px tall even at 1x, so it can carry real text sizes
   if (win.length) {
     const last = win[win.length - 1];
-    tctx.font = "500 20px " + MONO_CV;
+    const f = cvFont(tl, 13, "500");
+    tctx.font = f.font;
     const db = 20 * Math.log10(Math.max(last.rms / 32768, 1e-9));
     plated(tctx, `t=${last.t.toFixed(1)}s  rms=${last.rms} (${db.toFixed(1)} dBFS)`,
-           12, 28, 20, C.readout);
+           12, f.px + 8, f.px, C.readout);
   }
-  tctx.font = "16px " + MONO_CV;
-  plated(tctx, scaleCaption(clipped, mul), 12, H - 10, 16, C.caption);
+  const cap = cvFont(tl, 11);
+  tctx.font = cap.font;
+  plated(tctx, scaleCaption(clipped, mul), 12, H - 10, cap.px, C.caption);
 }
 
 // Clipping is called out rather than left to look like a loud passage — and the
@@ -1171,8 +1380,8 @@ function renderCandidateCard(runId, e) {
     if (st) {
       const t = st.text || "";
       const seg = useSeg
-        ? ` · <span style="color:var(--fg-warning)">✂ ${st.turns} turn${st.turns === 1 ? "" : "s"} (VAD-cut)</span>` : "";
-      html += `<div class="stt ${t ? "" : "empty"}">${t || "(empty transcript)"}</div>
+        ? ` · <span style="color:var(--vad-strong)">✂ ${st.turns} turn${st.turns === 1 ? "" : "s"} (VAD-cut)</span>` : "";
+      html += `<div class="stt ${useSeg ? "seg " : ""}${t ? "" : "empty"}">${t || "(empty transcript)"}</div>
         <div class="meta">lang: ${st.language ?? "—"} · confidence: ${st.confidence ?? "—"}${seg}
         ${e.output && !useSeg ? sttBtn(e.id) : ""}</div>`;
     } else if (state.werMode === "seg" && e.stt_seg_error) {
@@ -1199,6 +1408,7 @@ function renderCandidateCard(runId, e) {
     if (e.latency) {
       html += `<div class="meta">latency: init ${e.latency.init_ms} ms · per-20ms-block p95 ${e.latency.block_ms_p95} ms · algo delay ${e.latency.algo_delay_ms} ms</div>`;
     }
+    html += costLine(e.cost);
     html += vadLine(e.vad, e.vad_error, baseVad());
     html += truthLine(e.truth_score);
     if (e.output) {
@@ -1216,6 +1426,25 @@ function renderCandidateCard(runId, e) {
     state.vadSpans["wave-" + e.id] = e.vad || null;
     drawWave(fileUrl(e.output), "wave-" + e.id, peakKey(runId, e.output));
   }
+}
+
+// What the chain costs to RUN, which is not what `rtf` measures. rtf is wall
+// clock, so anything that spreads over cores looks cheap on an idle laptop and
+// is anything but on a box carrying N calls. cpu_per_audio_s is core-seconds per
+// second of audio, so its reciprocal is how many concurrent calls one core
+// holds — the number you actually size hardware with.
+function costLine(c) {
+  if (!c) return "";
+  const bits = [];
+  if (c.cpu_per_audio_s != null) {
+    const calls = c.cpu_per_audio_s > 0
+      ? ` · <b>~${Math.round(1 / c.cpu_per_audio_s)} calls/core</b>` : "";
+    bits.push(`<b>CPU</b> ${c.cpu_per_audio_s} core-s per audio-s${calls}`);
+  }
+  // absent by design at concurrency > 1: RSS is process-wide, so a neighbour
+  // model loading at the same moment would land in this one's number
+  if (c.model_rss_mb != null) bits.push(`<b>model</b> ${c.model_rss_mb} MB`);
+  return bits.length ? `<div class="meta">cost: ${bits.join(" · ")}</div>` : "";
 }
 
 // The raw leg's spans, when the run is loaded from history. Progress events carry
@@ -1264,7 +1493,7 @@ function renderInputCard(runId, meta) {
   if (!meta.input || !meta.input.file) return;
   const div = $("results");
   const card = document.createElement("div");
-  card.className = "cand-card";
+  card.className = "cand-card input";   // orange edge: the one untouched signal
   const url = runFile(runId, meta.input.file);
   let inScores = "";
   const is = meta.input_scores;
@@ -1363,6 +1592,8 @@ function paintWave(canvasId) {
   // in dB mode the sign is meaningless (log of |a|), so draw a symmetric
   // envelope rather than pretending the shape above/below zero survived
   const db = state.waveScale === "db";
+  const grad = waveGrad(ctx, H);
+  ctx.fillStyle = C.axis; ctx.fillRect(0, mid, W, 1);
   let clipped = 0;
   for (let x = 0; x < W; x++) {
     let up, dn;
@@ -1376,19 +1607,31 @@ function paintWave(canvasId) {
     const over = up > mid || dn > mid;
     if (over) clipped++;
     up = Math.min(up, mid); dn = Math.min(dn, mid);
-    ctx.fillStyle = over ? C.clip : C.wave;
+    ctx.fillStyle = over ? C.clip : grad;
     ctx.fillRect(x, mid - up, 1, Math.max(1, up + dn));
   }
-  // bottom-left, not top: the hand-marked speech ribbon owns the top edge
-  ctx.font = "16px " + MONO_CV;
-  plated(ctx, scaleCaption(clipped, mul), 10, H - 8, 16, C.caption);
+  // Both ribbons go ON TOP of the signal. Under it they disappeared exactly when
+  // the view was gained up enough to be worth reading.
+  const bar = paintRibbons(ctx, canvasId, W, H);
+  // bottom-left, and clear of the cyan VAD bar: the top edge belongs to the
+  // hand-marked ribbon, the bottom strip to the VAD's own verdict. 10 css px
+  // rather than the timeline's 11 because this canvas is only 32 css px tall at
+  // 1x — the plate would otherwise own half of it.
+  const cap = cvFont(cv, 10);
+  ctx.font = cap.font;
+  plated(ctx, scaleCaption(clipped, mul), 10, H - bar - 7, cap.px, C.caption);
 
   // playhead, so you can see which part of the waveform you are hearing
   const audio = waveAudio(cv);
   if (audio && audio.duration > 0 && isFinite(audio.duration) && audio.currentTime > 0) {
     const x = (audio.currentTime / audio.duration) * W;
+    // white and lit while it moves, grey and flat when parked — so "is this
+    // playing" is answerable from the picture alone
+    ctx.save();
+    if (!audio.paused) { ctx.shadowColor = "#ffffffcc"; ctx.shadowBlur = 10; }
     ctx.fillStyle = audio.paused ? C.paused : C.playing;
     ctx.fillRect(Math.min(x, W - 3), 0, 3, H);
+    ctx.restore();
   }
 }
 
@@ -1398,46 +1641,67 @@ function paintWave(canvasId) {
 // Positioned from the span's own duration_s, never from the <audio> element:
 // metadata may not have loaded, and in an export there is no decodable source.
 function paintVad(ctx, canvasId, W, H) {
-  if (!state.vadShow) return;
-  const v = state.vadSpans[canvasId];
-  if (!v || !v.duration_s || !(v.segments || []).length) return;
-  for (const [s, e] of v.segments) {
-    const x0 = Math.max(0, (s / v.duration_s) * W);
-    const x1 = Math.min(W, (e / v.duration_s) * W);
-    if (x1 <= x0) continue;
+  vadSpanRects(canvasId, W, (x0, x1) => {
     ctx.fillStyle = C.vadFill;
     ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
     // edges, so two spans separated by a short pause don't read as one
     ctx.fillStyle = C.vadEdge;
     ctx.fillRect(x0, 0, 1, H);
     ctx.fillRect(Math.max(x0, x1 - 1), 0, 1, H);
+  });
+}
+
+// Shared by the wash (under the signal) and the bar (over it), so the two can
+// never drift apart by a pixel and read as two different measurements.
+function vadSpanRects(canvasId, W, fn) {
+  if (!state.vadShow) return;
+  const v = state.vadSpans[canvasId];
+  if (!v || !v.duration_s || !(v.segments || []).length) return;
+  for (const [s, e] of v.segments) {
+    const x0 = Math.max(0, (s / v.duration_s) * W);
+    const x1 = Math.min(W, (e / v.duration_s) * W);
+    if (x1 > x0) fn(x0, x1);
   }
 }
 
-// Hand-marked speech, as an amber ribbon along the top of EVERY waveform — not
-// just the input it was drawn on. Seeing your own marks above each candidate's
-// green VAD spans is the whole comparison: amber with no green under it is speech
-// that chain hid from the recogniser.
+// The two verdicts, as two solid bars on opposite edges: violet on top is what a
+// human marked, cyan along the bottom is what the VAD decided. Cyan with no
+// violet over it is a turn the model invented; violet with no cyan under it is
+// speech that never reached the recogniser.
+// Returns the bar height so the caption can sit clear of it.
+function paintRibbons(ctx, canvasId, W, H) {
+  const bar = Math.max(3, Math.round(H * 0.075));
+  vadSpanRects(canvasId, W, (x0, x1) => {
+    ctx.fillStyle = C.vadBar;
+    ctx.fillRect(x0, H - bar, Math.max(1, x1 - x0), bar);
+  });
+  const dur = truthDur();
+  if (dur) {
+    ctx.fillStyle = C.truth;
+    for (const [s, e] of state.truth) {
+      const x0 = Math.max(0, (s / dur) * W), x1 = Math.min(W, (e / dur) * W);
+      if (x1 > x0) ctx.fillRect(x0, 0, Math.max(1, x1 - x0), bar);
+    }
+  }
+  return bar;
+}
+
+// The region being dragged right now, on the canvas being dragged only. The
+// committed marks are painted by paintRibbons() over the signal; this one goes
+// under it, because a wash across the full height is how you see which part of
+// the waveform you are about to swallow.
 function paintTruth(ctx, canvasId, W, H) {
   const dur = truthDur();
-  if (!dur) return;
-  const bar = Math.max(3, Math.round(H * 0.09));
-  const band = (s, e, fill) => {
-    const x0 = Math.max(0, (s / dur) * W), x1 = Math.min(W, (e / dur) * W);
-    if (x1 <= x0) return;
-    ctx.fillStyle = fill;
-    ctx.fillRect(x0, 0, Math.max(1, x1 - x0), bar);
-  };
-  for (const [s, e] of state.truth) band(s, e, C.truth);
-  // the drag in flight, on the canvas being dragged only
-  if (state.drag && state.drag.cv.id === canvasId) {
-    const a = Math.min(state.drag.from, state.drag.to) * dur;
-    const b = Math.max(state.drag.from, state.drag.to) * dur;
-    band(a, b, C.truthDrag);
-    const x0 = (a / dur) * W, x1 = (b / dur) * W;
-    ctx.fillStyle = C.truthWash;
-    ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
-  }
+  if (!dur || !state.drag || state.drag.cv.id !== canvasId) return;
+  const bar = Math.max(3, Math.round(H * 0.075));
+  const a = Math.min(state.drag.from, state.drag.to) * dur;
+  const b = Math.max(state.drag.from, state.drag.to) * dur;
+  const x0 = Math.max(0, (a / dur) * W), x1 = Math.min(W, (b / dur) * W);
+  if (x1 <= x0) return;
+  ctx.fillStyle = C.truthWash;
+  ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
+  ctx.fillStyle = C.truthDrag;
+  ctx.fillRect(x0, 0, Math.max(1, x1 - x0), bar);
 }
 
 function truthDur() {
@@ -1447,9 +1711,11 @@ function truthDur() {
 
 function repaintAllWaves() {
   state.fitCache = null;
+  cvScale = null;   // a scrollbar appearing or leaving changes the column width
   Object.keys(state.wavePeaks).forEach(paintWave);
   drawTimeline();
 }
+window.addEventListener("resize", () => { cvScale = null; });
 
 // ------------------------------------------------------- wave click / play
 // function, not const: paintWave above calls it, and a const would be in its
@@ -1558,7 +1824,7 @@ function renderMarkBar() {
     (${cov.toFixed(0)}% of the call)</span>`;
   if (EX) {   // no server to save to; show what was marked and nothing else
     bar.innerHTML = state.truth.length
-      ? `<span class="meta" style="color:var(--fg-warning)">✎ marked speech</span> ${summary}`
+      ? `<span class="meta" style="color:var(--mark-strong)">✎ marked speech</span> ${summary}`
       : "";
     return;
   }
@@ -1679,21 +1945,32 @@ function truthLine(t) {
 }
 
 // --------------------------------------------------------------- rankings
+// `hue` is the family this column belongs to, and it is the same hue that family
+// wears everywhere else on the page — violet for anything scored against a
+// human's marks, steel for DNSMOS, emerald for noise, orange for the headline
+// WER, gold for latency. Nine grey tables in a grid were indistinguishable.
 const CATEGORIES = [
   // First when it exists: it is the only column scored against what a human says
   // was actually spoken, rather than against another model's opinion.
-  { key: "agree", label: "VAD vs my marked speech", higher: true,
+  { key: "agree", label: "VAD vs my marked speech", higher: true, hue: "var(--mark)",
     fmt: (v) => (v * 100).toFixed(1) + "%", get: (_s, e) => e.truth_score?.agree },
-  { key: "miss",  label: "My speech the VAD missed", higher: false,
+  { key: "miss",  label: "My speech the VAD missed", higher: false, hue: "var(--mark)",
     fmt: (v) => v.toFixed(2) + " s", get: (_s, e) => e.truth_score?.miss_s },
-  { key: "ovrl",  label: "DNSMOS OVRL",        higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.ovrl },
-  { key: "sig",   label: "DNSMOS SIG (voice)", higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.sig },
-  { key: "bak",   label: "DNSMOS BAK (bkgd)",  higher: true,  fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.bak },
-  { key: "nr",    label: "Noise cut in gaps",  higher: true,  fmt: (v) => v.toFixed(1) + " dB", get: (s) => s.noise_reduction_db },
-  { key: "wer",   label: "WER (whole-file)",   higher: false, fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer?.wer },
-  { key: "wer_seg", label: "WER ✂ VAD-cut (production-real)", higher: false,
+  { key: "ovrl",  label: "DNSMOS OVRL",        higher: true,  hue: "var(--steel)", fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.ovrl },
+  { key: "sig",   label: "DNSMOS SIG (voice)", higher: true,  hue: "var(--steel)", fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.sig },
+  { key: "bak",   label: "DNSMOS BAK (bkgd)",  higher: true,  hue: "var(--steel)", fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.bak },
+  { key: "nr",    label: "Noise cut in gaps",  higher: true,  hue: "var(--success)", fmt: (v) => v.toFixed(1) + " dB", get: (s) => s.noise_reduction_db },
+  { key: "wer",   label: "WER (whole-file)",   higher: false, hue: "var(--brand)", fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer?.wer },
+  { key: "wer_seg", label: "WER ✂ VAD-cut (production-real)", higher: false, hue: "var(--vad)",
     fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer_seg?.wer },
-  { key: "p95",   label: "Block p95 (offline)", higher: false, fmt: (v) => v.toFixed(2) + " ms", get: (_s, e) => e.latency?.block_ms_p95 },
+  { key: "p95",   label: "Block p95 (offline)", higher: false, hue: "var(--warning)", fmt: (v) => v.toFixed(2) + " ms", get: (_s, e) => e.latency?.block_ms_p95 },
+  // the two that size a box rather than describe a delay. CPU is a thread clock,
+  // so it stays attributable even when the bench runs chains side by side;
+  // model memory is only recorded at concurrency 1 (see costLine).
+  { key: "cpu",   label: "CPU core-s per audio-s", higher: false, hue: "var(--warning)",
+    fmt: (v) => v.toFixed(4), get: (_s, e) => e.cost?.cpu_per_audio_s },
+  { key: "rss",   label: "Model memory", higher: false, hue: "var(--warning)",
+    fmt: (v) => v.toFixed(0) + " MB", get: (_s, e) => e.cost?.model_rss_mb },
 ];
 
 // Ranked inside ONE run only. Averaging across runs would rank the audio, not
@@ -1722,9 +1999,10 @@ function renderRankings(runId, meta) {
     if (rows.length < 2) continue;
     any = true;
     const box = document.createElement("div");
-    let html = `<div class="catlabel">${cat.label} ${cat.higher ? "↑" : "↓"}`;
+    box.style.setProperty("--accent", cat.hue);   // the dot, and the winner's rank
+    let html = `<div class="catlabel"><span>${cat.label} ${cat.higher ? "↑" : "↓"}`;
     html += control ? ` <span style="color:var(--body-subtle)">· Δ vs no-NC</span>` : "";
-    html += `</div><table>`;
+    html += `</span></div><table>`;
     html += rows.map((r, i) => {
       let delta = "";
       if (base != null && isFinite(base) && r.id !== "none") {
@@ -1734,9 +2012,12 @@ function renderRankings(runId, meta) {
           : good ? "var(--success-strong)" : "var(--danger-strong)";
         delta = `<span style="color:${col}">${d >= 0 ? "+" : "−"}${cat.fmt(Math.abs(d))}</span>`;
       }
-      const col2 = r.id === "none" ? "var(--body-subtle)" : "var(--brand)";
-      return `<tr class="rank" data-cand="${esc(r.id)}" title="jump to ${esc(r.id)}">` +
-        `<td style="color:var(--body-subtle)">${i + 1}</td>` +
+      // the passthrough leg is the ruler, not a competitor — steel like its card
+      const col2 = r.id === "none" ? "var(--steel-strong)" : "var(--brand-strong)";
+      // the rank number is coloured from CSS, not inline: an inline colour would
+      // outrank the .top rule that paints the winner in the category's own hue
+      return `<tr class="rank${i === 0 ? " top" : ""}" data-cand="${esc(r.id)}" title="jump to ${esc(r.id)}">` +
+        `<td class="pos">${i + 1}</td>` +
         `<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;` +
           `font-family:var(--mono);font-size:11px;color:${col2}">${esc(r.id)}</td>` +
         `<td style="text-align:right;font-family:var(--mono);color:var(--heading)">${cat.fmt(r.v)}</td>` +
@@ -1794,8 +2075,9 @@ document.querySelector("nav.rail").addEventListener("click", (ev) => {
 function flash(el) {
   el.style.transition = "outline-color .25s";
   el.style.outline = "2px solid var(--brand)";
+  el.style.outlineOffset = "1px";
   setTimeout(() => { el.style.outlineColor = "transparent"; }, 900);
-  setTimeout(() => { el.style.outline = ""; }, 1300);
+  setTimeout(() => { el.style.outline = ""; el.style.outlineOffset = ""; }, 1300);
 }
 
 function jumpToCandidate(cid) {
@@ -1823,7 +2105,7 @@ async function loadHistory() {
       <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
           font-family:var(--mono);font-size:11px;color:var(--body-subtle)">${cands}</td>
       <td style="font-family:var(--mono);font-size:11px">${r.status}${(r.candidates || []).some((c) => c.stt_seg)
-        ? ' <span style="color:var(--fg-warning)" title="has VAD-cut transcripts: one STT request per turn, production-real WER">✂</span>' : ""}</td>`
+        ? ' <span style="color:var(--vad-strong)" title="has VAD-cut transcripts: one STT request per turn, production-real WER">✂</span>' : ""}</td>`
       + (EX ? "" : `<td style="text-align:right"><button class="mini danger"
            data-del="${esc(r.id)}" title="delete this run and its audio">✕</button></td>`);
     tr.onclick = () => loadRun(r.id);
@@ -1923,8 +2205,9 @@ function initExport() {
   $("timeline").remove();
   $("tlTitle").textContent = "View";
   $("tlHint").innerHTML = `Scale and height apply to every waveform below —
-    <b>click any of them to play from that point</b>. Green spans are Silero VAD
-    speech: the turns production would have cut and sent to STT one at a time.`;
+    <b>click any of them to play from that point</b>. The cyan bar along the bottom
+    of each waveform is Silero VAD speech: the turns production would have cut and
+    sent to STT one at a time. A violet bar on top is hand-marked speech.`;
   $("exportWrap").remove();
   $("btnVad").remove();       // read-only: renderVadFields drops the inputs too
   $("btnSeg").remove();
@@ -1933,7 +2216,7 @@ function initExport() {
   const banner = document.createElement("div");
   banner.className = "box";
   banner.style.cssText = "margin:16px 20px 0;border-color:var(--brand-soft);"
-    + "background:#f79f790d;font-size:12px";
+    + "background:var(--brand-wash);box-shadow:inset 0 2px 0 var(--brand);font-size:12px";
   banner.innerHTML = `<span class="lbl" style="color:var(--brand)">NC Bench export</span>
     <div style="margin-top:6px">${EX.runs.length} runs, generated
     ${esc(EX.generated_at)}. Read-only snapshot: ${esc(EX.audio_note)}.` +
@@ -1952,9 +2235,13 @@ function initExport() {
 function concHint() {
   const n = +$("conc").value || 1;
   $("concHint").innerHTML = n === 1
-    ? "Serial. Slowest, but the only setting whose <b>latency</b> columns are comparable."
-    : `${n} chains at once — faster, but <b>block p95 / init are inflated</b> by CPU contention. ` +
-      "Quality metrics (DNSMOS, WER, band) are unaffected.";
+    ? "Serial. Slowest, but the only setting whose <b>latency</b> columns are comparable — "
+      + "and the only one that records <b>model memory</b> at all."
+    : `${n} chains at once — faster, but <b>block p95 / init are inflated</b> by CPU contention `
+      + "and <b>model memory is not recorded</b> (RSS is process-wide, so a neighbour's model "
+      + "would land in this one's number). <b>CPU core-seconds</b> stay attributable — it's a "
+      + "thread clock — though contention inflates them a little. Quality metrics "
+      + "(DNSMOS, WER, band) are unaffected.";
 }
 // wave scale/height work identically in both modes — they only touch the canvases
 $("waveScale").innerHTML = WAVE_SCALES.map((s) =>

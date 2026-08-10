@@ -12,6 +12,36 @@ from __future__ import annotations
 import numpy as np
 
 
+def ort_options():
+    """Session options for a STREAMING processor: one thread, sequential.
+
+    ONNX Runtime defaults to one intra-op thread per physical core, which on
+    20 ms frames costs more in thread hand-off than the parallelism buys.
+    Measured over a 119 s file, pinning to one thread cut CPU by ~5.5x *and*
+    cut wall-clock at the same time:
+
+        dpdfnet2        0.435 -> 0.079 CPU-s per audio-s,  RTF 0.088 -> 0.079
+        gtcrn           0.187 -> 0.030 CPU-s per audio-s,  RTF 0.038 -> 0.030
+        fastenhancer-t  0.065 -> 0.009 CPU-s per audio-s,  RTF 0.013 -> 0.009
+
+    It also stops one candidate from taking every core while the bench runs
+    others beside it, and it is what makes pipeline.py's thread_time() reading
+    the whole cost rather than a fifth of it — check_single_threaded() in
+    scripts/selfcheck.py pins that invariant.
+
+    Whole-file scoring (DNSMOS, Silero) deliberately keeps the ORT default:
+    one big tensor is where intra-op parallelism actually pays.
+    """
+    import onnxruntime as ort
+
+    opts = ort.SessionOptions()
+    opts.log_severity_level = 3
+    opts.intra_op_num_threads = 1
+    opts.inter_op_num_threads = 1
+    opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    return opts
+
+
 class Processor:
     name: str = "base"
     rate: int = 16_000

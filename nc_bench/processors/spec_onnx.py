@@ -21,7 +21,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import config
-from .base import Processor
+from .base import Processor, ort_options
 
 # id -> file under models/ + any framing the ONNX metadata doesn't carry.
 # extra_delay_ms = lookahead *inside* the graph, on top of the STFT framing: the
@@ -74,10 +74,9 @@ class SpecOnnxProcessor(Processor):
         import onnxruntime as ort
 
         cfg = _MODELS[model]
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3
         self._sess = ort.InferenceSession(
-            str(config.MODELS_DIR / cfg["path"]), opts, providers=["CPUExecutionProvider"]
+            str(config.MODELS_DIR / cfg["path"]), ort_options(),
+            providers=["CPUExecutionProvider"],
         )
         md = self._sess.get_modelmeta().custom_metadata_map
 

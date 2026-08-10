@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import config
-from .base import Processor
+from .base import Processor, ort_options
 
 # id -> file under models/ (the DNS-trained 16 kHz wav2wav release)
 _MODELS = {
@@ -42,10 +42,9 @@ class FastEnhancerProcessor(Processor):
     def __init__(self, model: str):
         import onnxruntime as ort
 
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3
         self._sess = ort.InferenceSession(
-            str(config.MODELS_DIR / _MODELS[model]), opts, providers=["CPUExecutionProvider"]
+            str(config.MODELS_DIR / _MODELS[model]), ort_options(),
+            providers=["CPUExecutionProvider"],
         )
         ins = self._sess.get_inputs()
         self.name = model
