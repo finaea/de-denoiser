@@ -30,12 +30,51 @@ PAD_S = 3.0  # silence welded on each side; spans must stay inside the speech
 
 
 def _find_speech() -> Path | None:
-    """A real recorded run's passthrough — known-good speech with known bounds."""
+    """A real recorded run's passthrough — known-good speech with known bounds.
+
+    Skips `_`-prefixed scratch copies: `_` sorts after every dated id, so
+    without this a scratch copy of some older run would silently become the
+    speech under test.
+    """
     for d in sorted(config.RUNS_DIR.iterdir(), reverse=True):
+        if d.name.startswith("_"):
+            continue
         wav = d / "none.wav"
         if wav.is_file() and wav.stat().st_size > 300_000:
             return wav
     return None
+
+
+SILERO_V60_SHA = "597d30b3ec076608d059477bb14cfeffdf951bf5cae370d38f65d33bbfe82004"
+
+
+def _reproduce(wav: Path, stored: dict, meta: dict) -> tuple[dict, str]:
+    """Stored spans re-derived through the VAD bench with the ONNX that made them.
+
+    A record written before 2026-09-29 carries no onnx_sha256; every such
+    record came from livekit-plugins-silero 1.6.7 (uv.lock since 2026-08-01),
+    which bundles Silero v6.0, so that is the model assumed for it.
+    """
+    from nc_bench import vads
+    from nc_bench.vads.segmenter import PLUGIN_ALPHA, segment, summary
+
+    sha = stored.get("onnx_sha256") or SILERO_V60_SHA
+    p = dict(stored["params"])
+    p.setdefault("sample_rate", 16000)   # recorded before the rate was selectable
+    p = vad.clean(p, meta.get("source"))
+    fam = next((e["family"] for e in vads.registry() if e["loader"] == "silero_onnx"
+                and sha in {s.get("sha256") for s in (e.get("files") or {}).values()}), None)
+    assert fam, f"no Silero in vad_candidates.json has the stored ONNX sha {sha[:8]}…"
+    vid = f"{fam}-{p['sample_rate'] // 1000}k"
+    data, rate = sf.read(wav, dtype="int16", always_2d=True)
+    x = np.ascontiguousarray(data[:, 0])
+    r = vads.infer(vid, x, rate)
+    segs = segment(r["probs"], r["hop_s"], t0_s=r["t0_s"], duration_s=len(x) / rate,
+                   smoothing=PLUGIN_ALPHA, **{k: p[k] for k in (
+                       "activation_threshold", "deactivation_threshold",
+                       "min_speech_duration", "min_silence_duration")})
+    how = "stored sha" if stored.get("onnx_sha256") else "inferred from lock"
+    return {"segments": segs, **summary(segs, len(x) / rate)}, f"{vid} ({how})"
 
 
 async def main() -> None:
@@ -142,22 +181,27 @@ async def main() -> None:
             None,
         )
         if stored and stored.get("params"):
-            fresh = await vad.analyze(src, stored["params"])
-            # NOT exact equality: onnxruntime inference is nondeterministic at
-            # the margin, and with min_speech 0.05 s (~1.5 windows at 8 kHz) a
-            # borderline span can flicker in or out between identical runs —
-            # measured 2026-08-05: the same wav alternated 15.55 s / 15.58 s
-            # across four analyses in one process, and a marginal span made a
-            # noisy run read 13 or 14 spans depending on the day. Tolerate that
-            # jitter; anything larger is a real algorithm change.
+            # Re-derived with the model that PRODUCED the stored spans, not with
+            # whatever plugin is installed now: a plugin bump swaps the bundled
+            # ONNX (1.6.7 = Silero v6.0, 1.8.3 = v6.2), and comparing across that
+            # tests the bump, not the spans. The VAD bench holds every Silero
+            # release, and scripts/check_vad_parity.py proves its path equals the
+            # plugin's (same ONNX + the plugin's ExpFilter), so it stands in for
+            # plugin versions that are no longer installed.
+            fresh, model = _reproduce(src, stored, meta)
+            # NOT exact equality: the stored spans came from the plugin path,
+            # whose in-stream resampling is not repeatable at 8 kHz (the same
+            # file gives 2-3 distinct span sets across runs, measured
+            # 2026-09-29), so a borderline span can flicker in or out. Tolerate
+            # that jitter; anything larger is a real algorithm change.
             d_speech = abs(fresh["speech_s"] - stored["speech_s"])
             d_n = abs(fresh["n"] - stored["n"])
             assert d_speech <= 0.6 and d_n <= 1, (
                 f"stored spans drifted beyond inference jitter: "
-                f"Δspeech {d_speech:.2f}s, Δspans {d_n}"
+                f"Δspeech {d_speech:.2f}s, Δspans {d_n} (re-derived with {model})"
             )
             exact = fresh["segments"] == stored["segments"]
-            print(f"OK   spans on disk reproduce within inference jitter "
+            print(f"OK   spans on disk reproduce within inference jitter with {model} "
                   f"(rate {stored['params'].get('sample_rate', 16000)}"
                   f"{', exact' if exact else f', Δ{d_speech:.2f}s/{d_n} span'})")
         else:

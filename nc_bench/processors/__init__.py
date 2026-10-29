@@ -10,6 +10,7 @@ from .hecttor import HecttorProcessor, hecttor_available
 from .hush import HushProcessor, hush_available
 from .rnnoise import RNNoiseProcessor, rnnoise_available
 from .spec_onnx import SpecOnnxProcessor, spec_onnx_available
+from .voxlock import VoxLockProcessor, voxlock_available
 
 # proc name -> (availability checker, factory); both take the candidate's spec
 _REGISTRY = {
@@ -41,8 +42,13 @@ _REGISTRY = {
         hush_available,
         lambda spec: HushProcessor(atten_lim_db=spec.get("atten_lim_db")),
     ),
+    # open target-speaker extraction: keeps the first voice it hears for ~3 s
+    "voxlock": (
+        voxlock_available,
+        lambda spec: VoxLockProcessor(precision=spec.get("precision", "int8")),
+    ),
     "aic": (
-        lambda spec: aic_available(),
+        aic_available,
         lambda spec: AICProcessor(
             model_id=spec.get("model"),
             enhancement_level=spec.get("enhancement_level"),

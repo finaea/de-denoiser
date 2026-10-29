@@ -14,12 +14,29 @@ dependencies = [
     "soundfile>=0.12",
     "soxr>=0.5",
     "onnxruntime>=1.18",
-    "livekit>=1.0",
+    "livekit>=1.0.25",
     "livekit-api>=1.0",
-    "livekit-plugins-noise-cancellation==0.2.6",
-    "livekit-plugins-ai-coustics>=0.3.0",
-    "aic-sdk>=2.5.0",
-    "livekit-plugins-silero>=1.6.7",
+    "livekit-agents>=1.8.3",
+    # Pinned exactly: the LiveKit-hosted models ship inside these wheels, so a
+    # version bump is a model change. 0.3.2 of the official ai-coustics plugin
+    # embeds Voice Focus 2.2 (<= 0.3.1 embedded 2.1); noise-cancellation 0.3.2
+    # carries the same three Krisp .kef files as 0.2.6.
+    "livekit-plugins-noise-cancellation==0.3.2",
+    "livekit-plugins-ai-coustics==0.3.2",
+    "livekit-plugins-krisp==0.4.3",
+    # ai-coustics' own SDK (standalone, own licence key). 3.x = core 0.24,
+    # mono-only processing, VAD as its own object.
+    "aic-sdk>=3.2.0,<4",
+    # Pinned exactly: the package pins the Hugging Face model revision it
+    # downloads, so a version bump is a model change.
+    "voxlock==1.1.1",
+    "livekit-plugins-silero>=1.8.3",
+    "earshot>=1.2.2",
+    "kaldi-native-fbank>=1.22",
+    "kaldiio>=2.18",
+    "ten-vad==1.0.6.8",
+    "webrtcvad-wheels>=2.0.14",
+    "vadonnx==0.1.0",
 ]
 
 # Hecttor's SDK is deliberately absent from `dependencies`. It is proprietary,

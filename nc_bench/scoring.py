@@ -170,18 +170,29 @@ def _tokens(text: str) -> list[str]:
 
 
 def wer(reference: str, hypothesis: str) -> dict | None:
-    """Word error rate via word-level edit distance. None if reference empty."""
+    """Word error rate via word-level edit distance. None if reference empty.
+
+    One numpy pass per reference word instead of a Python loop per cell: a
+    long call's VAD-cut WER is re-scored for every (VAD, source, mode) each
+    time a reference changes, and the cell loop took 0.52 s at 1,000 words.
+    Within a row, d[i][j] = min(t[j], d[i][j-1] + 1) where t[j] is the best of
+    deletion and substitution; that recurrence is a running minimum of t[k] - k,
+    plus j. Exact, not an approximation (scripts/check_vad_cut_wer.py pins it
+    against the cell loop)."""
     ref, hyp = _tokens(reference), _tokens(hypothesis)
     if not ref:
         return None
-    d = np.zeros((len(ref) + 1, len(hyp) + 1), dtype=np.int32)
-    d[:, 0] = np.arange(len(ref) + 1)
-    d[0, :] = np.arange(len(hyp) + 1)
-    for i in range(1, len(ref) + 1):
-        for j in range(1, len(hyp) + 1):
-            cost = 0 if ref[i - 1] == hyp[j - 1] else 1
-            d[i, j] = min(d[i - 1, j] + 1, d[i, j - 1] + 1, d[i - 1, j - 1] + cost)
-    errors = int(d[len(ref), len(hyp)])
+    vocab: dict[str, int] = {}
+    r = np.array([vocab.setdefault(w, len(vocab)) for w in ref], dtype=np.int64)
+    h = np.array([vocab.setdefault(w, len(vocab)) for w in hyp], dtype=np.int64)
+    idx = np.arange(len(h) + 1, dtype=np.int64)
+    prev = idx.copy()
+    for i in range(1, len(r) + 1):
+        t = np.empty_like(prev)
+        t[0] = i
+        t[1:] = np.minimum(prev[1:] + 1, prev[:-1] + (h != r[i - 1]))
+        prev = np.minimum.accumulate(t - idx) + idx
+    errors = int(prev[-1])
     return {"wer": round(errors / len(ref), 3), "errors": errors, "ref_words": len(ref)}
 
 

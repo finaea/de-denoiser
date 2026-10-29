@@ -134,6 +134,12 @@ def run_chain(
             # sum of each stage's structural buffering (block/window sizes) —
             # what the chain would add to live audio even on an infinite CPU
             "algo_delay_ms": round(sum(p.algo_delay_ms for p in procs), 1),
+            # the output shift as the model itself reports it (ai-coustics only);
+            # None unless every stage reports one, since a partial sum misleads
+            "output_delay_ms": (
+                round(sum(p.output_delay_ms for p in procs), 2)
+                if all(p.output_delay_ms is not None for p in procs) else None
+            ),
         },
         # What it costs to RUN, as opposed to how fast it finishes. rtf is wall
         # clock and flatters anything that spreads over cores; cpu_per_audio_s

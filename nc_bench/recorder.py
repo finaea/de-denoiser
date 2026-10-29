@@ -99,6 +99,10 @@ class _Bridge:
         self.finished = threading.Event()
         self.raw: list[np.ndarray] = []
         self.live_bufs: dict[str, list[np.ndarray]] = {}
+        # ai-coustics streams: the enhancer's per-frame speech flag (1/0, -1 =
+        # frame came without one) and the frame length it was stamped at
+        self.live_flags: dict[str, list[int]] = {}
+        self.live_frame_s: dict[str, float] = {}
         self.live_errors: dict[str, str] = {}
         self.diag: dict = {}  # room / participant / SIP attributes of the recording
         # why the outbound call never produced audio; only this knows the SIP reason
@@ -267,7 +271,7 @@ async def _entrypoint(ctx) -> None:
     async def consume_live(cand: dict):
         cid = cand["id"]
         try:
-            opts = lk_cloud.build(cand["lk_model"])
+            opts = lk_cloud.build(cand["lk_model"], cand.get("lk_options"))
             stream = rtc.AudioStream(
                 track, sample_rate=RECORD_RATE, num_channels=1, noise_cancellation=opts
             )
@@ -275,9 +279,14 @@ async def _entrypoint(ctx) -> None:
             b.live_errors[cid] = f"could not attach cloud NC stream: {e}"
             return
         bufs = b.live_bufs.setdefault(cid, [])
+        flags = b.live_flags.setdefault(cid, [])
         try:
             async for event in stream:
-                bufs.append(np.frombuffer(event.frame.data, dtype=np.int16).copy())
+                f = event.frame
+                bufs.append(np.frombuffer(f.data, dtype=np.int16).copy())
+                v = (f.userdata or {}).get(lk_cloud.AIC_VAD_KEY)
+                flags.append(-1 if v is None else int(bool(v)))
+                b.live_frame_s.setdefault(cid, f.samples_per_channel / f.sample_rate)
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -519,7 +528,9 @@ class Recorder:
         """Tear down and write the recording.
 
         Returns (input metadata, live-rail results): live results map
-        candidate id -> {"audio": int16 ndarray @48k} or {"error": str}.
+        candidate id -> {"audio": int16 ndarray @48k} or {"error": str}; an
+        ai-coustics candidate also carries "vad_flags" (int8 per frame, -1 =
+        unflagged) and "frame_s".
         """
         if self._poll_task is not None and not self._poll_task.done():
             self._poll_task.cancel()
@@ -554,23 +565,33 @@ class Recorder:
 
         live: dict[str, dict] = {}
         for cand in _bridge.live:
-            cid = cand["id"]
+            cid, model, opts = cand["id"], cand["lk_model"], cand.get("lk_options")
+            flags = np.array(_bridge.live_flags.get(cid) or [], np.int8)
             if cid in _bridge.live_errors:
                 live[cid] = {"error": _bridge.live_errors[cid]}
             elif _bridge.live_bufs.get(cid):
                 audio = np.concatenate(_bridge.live_bufs[cid])
                 # When Cloud refuses the filter (code=209 in server logs) the
                 # stream silently passes raw audio through — detect and refuse
-                # to present passthrough as an NC result.
+                # to present passthrough as an NC result. Not for the control or
+                # an ai-coustics bypass, whose audio is raw by design: for those
+                # the enhancer's flags are the proof it ran.
                 rms = float(np.sqrt((audio.astype(np.float64) ** 2).mean()))
-                if raw_rms > 0 and abs(rms - raw_rms) / raw_rms < 0.02:
+                if (lk_cloud.changes_audio(model, opts) and raw_rms > 0
+                        and abs(rms - raw_rms) / raw_rms < 0.02):
                     live[cid] = {"error": (
                         "output is (near-)identical to raw — LiveKit Cloud did not "
                         "initialize the NC filter for this session (code=209; check "
                         "the project's noise-cancellation enablement in the Cloud dashboard)"
                     )}
+                elif lk_cloud.is_aic(model) and not (flags >= 0).any():
+                    live[cid] = {"error": f"no {lk_cloud.AIC_VAD_KEY} flag on any frame — "
+                                          "the ai-coustics enhancer never ran"}
                 else:
                     live[cid] = {"audio": audio}
+                    if lk_cloud.is_aic(model):
+                        live[cid]["vad_flags"] = flags
+                        live[cid]["frame_s"] = _bridge.live_frame_s.get(cid)
             else:
                 live[cid] = {"error": "no frames captured on the live NC stream"}
 

@@ -48,6 +48,9 @@ class Processor:
     # structural buffering the processor imposes on a live stream (ms):
     # its chunk/window size — independent of CPU speed
     algo_delay_ms: float = 0.0
+    # how far the output trails the input, where the model itself reports it
+    # (ai-coustics' get_audio_delay); None = not reported, see selfcheck's probe
+    output_delay_ms: float | None = None
     # True for processors that do all their work in flush() (whole-file tools):
     # their per-block timings are meaningless, so the pipeline suppresses them
     whole_file: bool = False

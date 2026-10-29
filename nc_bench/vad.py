@@ -27,6 +27,12 @@ shifts every span uniformly late — measured at +0.576 s, i.e. most of a word.
 scripts/check_vad.py exists specifically to keep that offset from creeping back:
 a shifted highlight looks plausible on every waveform while sitting a fixed
 distance from the audio it marks.
+
+This module is the one-model path behind the cyan spans on every card, and it
+stays exactly as it was. The multi-model VAD bench lives in nc_bench/vads/: it
+replicates this plugin's state machine over stored probabilities
+(vads/segmenter.py), and scripts/check_vad_parity.py holds the two to the same
+spans.
 """
 
 from __future__ import annotations
@@ -130,7 +136,7 @@ def _mask(spans, n: int) -> np.ndarray:
     return m
 
 
-def score_spans(truth, segments, duration_s) -> dict | None:
+def score_spans(truth, segments, duration_s, ignore=None) -> dict | None:
     """Frame-level agreement between hand-marked speech and a VAD's spans.
 
     Masks on 10 ms frames rather than interval algebra: 12 000 frames for a
@@ -142,19 +148,25 @@ def score_spans(truth, segments, duration_s) -> dict | None:
     say the same thing. The two error terms are kept separate because they mean
     opposite things: `miss_s` is speech a chain hid from the recogniser, `fa_s` is
     turns nobody spoke.
+
+    Frames inside `ignore` spans (audio whose true label is uncertain, e.g. a
+    quiet echo) count neither way: they are left out of every term.
     """
     if not truth or segments is None or not duration_s:
         return None
     n = max(1, round(float(duration_s) / TRUTH_FRAME))
     t, v = _mask(truth, n), _mask(segments, n)
-    tp = int((t & v).sum())
-    fn = int((t & ~v).sum())
-    fp = int((~t & v).sum())
-    tn = int((~t & ~v).sum())
+    keep = ~_mask([[w[0], w[1]] if not isinstance(w, dict) else [w["start"], w["end"]]
+                   for w in ignore or []], n)
+    tp = int((t & v & keep).sum())
+    fn = int((t & ~v & keep).sum())
+    fp = int((~t & v & keep).sum())
+    tn = int((~t & ~v & keep).sum())
+    scored = max(1, int(keep.sum()))
     prec = tp / (tp + fp) if tp + fp else 0.0
     rec = tp / (tp + fn) if tp + fn else 0.0
     return {
-        "agree": round((tp + tn) / n, 4),
+        "agree": round((tp + tn) / scored, 4),
         "f1": round(2 * prec * rec / (prec + rec), 4) if prec + rec else 0.0,
         "miss_s": round(fn * TRUTH_FRAME, 2),
         "fa_s": round(fp * TRUTH_FRAME, 2),
@@ -169,14 +181,68 @@ def score_run(meta: dict) -> None:
     since a stored score is only meaningful for the pair that produced it.
     """
     truth = meta.get("truth_spans") or []
+    ignore = meta.get("ignore_spans") or []
     dur = float((meta.get("input") or {}).get("duration_s") or 0)
     if not dur:
         dur = float((meta.get("input_vad") or {}).get("duration_s") or 0)
     for c in meta.get("candidates") or []:
         v = c.get("vad") or {}
         c["truth_score"] = (
-            None if v.get("error") else score_spans(truth, v.get("segments"), dur)
+            None if v.get("error") else score_spans(truth, v.get("segments"), dur, ignore)
         )
+    # The VAD bench's results are scored against the same marks, so they go stale
+    # at the same moment. Imported here: nc_bench.vads imports this module.
+    if meta.get("vad_bench"):
+        from .vads.bench import rescore
+
+        rescore(meta)
+
+
+_model_info: dict | None = None
+
+
+def model_info() -> dict:
+    """Which Silero this plugin install actually runs, for every record analyze()
+    writes.
+
+    Recorded because a plugin bump is a silent MODEL change, not a code change:
+    livekit-plugins-silero 1.6.7 (every run stored before 2026-09-29, per the
+    uv.lock of 2026-08-01) bundled the Silero v6.0 ONNX (sha 597d30b3…), and
+    1.8.3 bundles v6.2 (1a153a22…), so "re-run VAD on this run" moves a run from
+    one model to the other. load() with no onnx_file_path always runs the
+    bundled file in both versions. The label comes from vad_candidates.json's
+    pinned Silero hashes; an unknown hash is reported as such, not guessed.
+    """
+    global _model_info
+    if _model_info is None:
+        import hashlib
+        import importlib.metadata
+        import importlib.resources
+        import json
+
+        res = importlib.resources.files("livekit.plugins.silero.resources") / "silero_vad.onnx"
+        sha = hashlib.sha256(res.read_bytes()).hexdigest()
+        label = None
+        try:
+            known: dict[str, str] = {}
+            for e in json.loads((config.PROJECT_ROOT / "vad_candidates.json").read_text()):
+                if e.get("loader") != "silero_onnx":
+                    continue
+                version = e["id"].removeprefix("silero-")
+                for spec in (e.get("files") or {}).values():
+                    # v6.2 and v6.2.3 share a file: the shortest tag names it
+                    if spec.get("sha256") and len(version) < len(known.get(spec["sha256"], "~" * 99)):
+                        known[spec["sha256"]] = version
+            if sha in known:
+                label = f"Silero {known[sha]}"
+        except (OSError, ValueError, KeyError):
+            pass
+        _model_info = {
+            "silero_plugin_version": importlib.metadata.version("livekit-plugins-silero"),
+            "onnx_sha256": sha,
+            "model": label or f"unknown Silero ONNX ({sha[:8]}…)",
+        }
+    return dict(_model_info)
 
 
 def _load(p: dict):
@@ -257,4 +323,6 @@ async def analyze(wav, p: dict | None = None, source: str | None = None) -> dict
         # produced it, and the UI can re-run with different ones at any time
         "params": p,
         "file_rate": rate,
+        # ...or without the model: silero_plugin_version, onnx_sha256, model
+        **model_info(),
     }

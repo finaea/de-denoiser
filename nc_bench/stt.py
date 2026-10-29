@@ -31,7 +31,10 @@ async def _recognize(mono, rate: int) -> dict:
     async with aiohttp.ClientSession() as session:
         async with session.post(
             config.WHISPER_URL,
-            params={"boost_volume": str(config.WHISPER_BOOST_VOLUME).lower()},
+            # log_audio=false keeps bench audio out of the STT box's own logs. An
+            # endpoint without that param ignores it.
+            params={"boost_volume": str(config.WHISPER_BOOST_VOLUME).lower(),
+                    "log_audio": "false"},
             data=buf.getvalue(),
             headers={"Content-Type": "audio/wav"},
             timeout=aiohttp.ClientTimeout(total=60),
@@ -62,21 +65,44 @@ def merge_turns(segments, pad_s: float, duration_s: float) -> list[list[float]]:
     words twice and score as insertions. Pure so scripts/check_stt_turns.py can
     pin the edge cases without an STT server.
     """
-    cuts: list[list[float]] = []
-    for s, e in segments or []:
-        s = max(0.0, float(s) - pad_s)
-        e = min(duration_s, float(e))
+    return [[c["start"], c["end"]] for c in cut_list(segments, pad_s, duration_s)]
+
+
+def cut_list(segments, pad_s: float, duration_s: float) -> list[dict]:
+    """merge_turns with what each cut is made of: `span` is the VAD's own
+    [first start, last end] before the padding, and `segments` how many VAD
+    spans the padding fused into this one request. The span is what an ignore
+    span is tested against: the padding is the buffer's, not the VAD's."""
+    cuts: list[dict] = []
+    for s0, e0 in segments or []:
+        s = max(0.0, float(s0) - pad_s)
+        e = min(duration_s, float(e0))
         if e - s < 0.02:
             continue
-        if cuts and s <= cuts[-1][1]:
-            cuts[-1][1] = max(cuts[-1][1], e)
+        if cuts and s <= cuts[-1]["end"]:
+            c = cuts[-1]
+            c["end"] = max(c["end"], e)
+            c["span"][1] = max(c["span"][1], e)
+            c["segments"] += 1
         else:
-            cuts.append([s, e])
+            cuts.append({"start": s, "end": e, "span": [max(0.0, float(s0)), e], "segments": 1})
     return cuts
 
 
+def cache_key() -> str:
+    """What a cut's text depends on besides its audio: the endpoint and its
+    volume boost. A cached cut is reused only under the same key."""
+    return f"{config.WHISPER_URL}|boost={str(config.WHISPER_BOOST_VOLUME).lower()}"
+
+
+def cut_id(start: float, end: float) -> str:
+    """A cut's identity inside one audio file: its sent bounds, to the ms."""
+    return f"{start:.3f}-{end:.3f}"
+
+
 async def transcribe_turns(
-    wav_path: Path, segments, pad_s: float = 0.5, cut_wav: Path | None = None
+    wav_path: Path, segments, pad_s: float = 0.5, cut_wav: Path | None = None,
+    cache: dict | None = None,
 ) -> dict:
     """Cut the file at its VAD spans and transcribe one request per turn — how
     production actually feeds this STT (livekit's VAD segments the call and each
@@ -91,14 +117,35 @@ async def transcribe_turns(
     result is never mistaken for a whole-file transcript. Zero spans returns empty
     text deliberately: if the VAD sent nothing, production hears nothing, and the
     WER should say so rather than quietly falling back to the whole file.
+
+    `cuts` keeps every request's own text, empty ones included, so the page can
+    show what one cut heard and a WER can be re-derived (without STT) when the
+    references or the ignore spans change.
+
+    `cache` ({cut_id: {text, confidence, language}}, for THIS file's audio and
+    the current cache_key()) answers a cut with the same bounds without a
+    request; new answers are added to it. `sent` / `reused` count the two.
     """
     mono, rate = _load_mono(wav_path)
-    cuts = merge_turns(segments, pad_s, len(mono) / rate)
+    cuts = cut_list(segments, pad_s, len(mono) / rate)
     texts, langs, confs, pieces = [], [], [], []
-    for s, e in cuts:
+    sent = reused = 0
+    for c in cuts:
+        s, e = c["start"], c["end"]
         piece = mono[int(s * rate): int(e * rate)]
         pieces.append(piece)
-        r = await _recognize(piece, rate)
+        key = cut_id(round(s, 3), round(e, 3))
+        if cache is not None and key in cache:
+            r = cache[key]
+            reused += 1
+        else:
+            r = await _recognize(piece, rate)
+            sent += 1
+            if cache is not None:
+                cache[key] = {"text": r["text"], "confidence": r.get("confidence"),
+                              "language": r.get("language")}
+        c.update(start=round(s, 3), end=round(e, 3), span=[round(x, 3) for x in c["span"]],
+                 text=r["text"], confidence=r.get("confidence"), language=r.get("language"))
         if r["text"]:
             texts.append(r["text"])
             langs.append(r.get("language"))
@@ -119,4 +166,7 @@ async def transcribe_turns(
         "confidence": round(sum(d * c for d, c in confs) / total, 4) if total else None,
         "mode": "segmented",
         "turns": len(cuts),
+        "cuts": cuts,
+        "sent": sent,
+        "reused": reused,
     }

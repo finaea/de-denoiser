@@ -1,0 +1,342 @@
+[
+  {
+    "id": "lk-inference",
+    "label": "LiveKit inference.VAD (native Silero v6.2) — production",
+    "loader": "lk_inference",
+    "rates": [16000],
+    "hop_s": 0.032,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "livekit-local-inference: Apache-2.0 code + LiveKit Model License (models only with LiveKit Agents); Silero weights MIT",
+    "notes": "What production runs. Driven through livekit.agents.inference.VAD itself (the framework path, as its model licence requires); runs offline, no Cloud session. Unsmoothed, like prod.",
+    "files": {}
+  },
+  {
+    "id": "silero-v6.2.3",
+    "label": "Silero v6.2.3 ONNX (latest tag; identical ONNX to v6.2, sha 1a153a22…)",
+    "loader": "silero_onnx",
+    "state_api": "v5",
+    "onnx": "vad/silero/v6.2.3/silero_vad.onnx",
+    "rates": [8000, 16000],
+    "hop_s": 0.032,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "MIT",
+    "notes": "v6.2, v6.2.1, v6.2.2 and v6.2.3 ship a byte-identical silero_vad.onnx; the same file is bundled in livekit-plugins-silero 1.8.3. Kept as its own row so 'latest tag' is explicit.",
+    "files": {
+      "vad/silero/v6.2.3/silero_vad.onnx": {
+        "url": "https://github.com/snakers4/silero-vad/raw/v6.2.3/src/silero_vad/data/silero_vad.onnx",
+        "sha256": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"
+      }
+    }
+  },
+  {
+    "id": "silero-v6.2",
+    "label": "Silero v6.2 ONNX",
+    "loader": "silero_onnx",
+    "state_api": "v5",
+    "onnx": "vad/silero/v6.2/silero_vad.onnx",
+    "rates": [8000, 16000],
+    "hop_s": 0.032,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "MIT",
+    "notes": "The ONNX of the model production's native engine runs (bake-off: probability correlation 0.9995 with the native engine).",
+    "files": {
+      "vad/silero/v6.2/silero_vad.onnx": {
+        "url": "https://github.com/snakers4/silero-vad/raw/v6.2/src/silero_vad/data/silero_vad.onnx",
+        "sha256": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"
+      }
+    }
+  },
+  {
+    "id": "silero-v6.0",
+    "label": "Silero v6.0 ONNX (what the old bench's VAD column ran)",
+    "loader": "silero_onnx",
+    "state_api": "v5",
+    "onnx": "vad/silero/v6.0/silero_vad.onnx",
+    "rates": [8000, 16000],
+    "hop_s": 0.032,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "MIT",
+    "notes": "The ONNX bundled in livekit-plugins-silero 1.6.7, which produced every stored run's `vad` spans (with ExpFilter smoothing).",
+    "files": {
+      "vad/silero/v6.0/silero_vad.onnx": {
+        "url": "https://github.com/snakers4/silero-vad/raw/v6.0/src/silero_vad/data/silero_vad.onnx",
+        "sha256": "597d30b3ec076608d059477bb14cfeffdf951bf5cae370d38f65d33bbfe82004"
+      }
+    }
+  },
+  {
+    "id": "silero-v5.1.2",
+    "label": "Silero v5.1.2 ONNX",
+    "loader": "silero_onnx",
+    "state_api": "v5",
+    "onnx": "vad/silero/v5.1.2/silero_vad.onnx",
+    "rates": [8000, 16000],
+    "hop_s": 0.032,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "MIT",
+    "notes": "",
+    "files": {
+      "vad/silero/v5.1.2/silero_vad.onnx": {
+        "url": "https://github.com/snakers4/silero-vad/raw/v5.1.2/src/silero_vad/data/silero_vad.onnx",
+        "sha256": "2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f"
+      }
+    }
+  },
+  {
+    "id": "silero-v4.0",
+    "label": "Silero v4.0 ONNX (older h/c state API)",
+    "loader": "silero_onnx",
+    "state_api": "v4",
+    "onnx": "vad/silero/v4.0/silero_vad.onnx",
+    "rates": [8000, 16000],
+    "hop_s": 0.032,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "MIT",
+    "notes": "8 kHz was the best Silero configuration on PR-42 (7/7, 0 extra). The livekit plugin's onnx_file_path cannot load this graph.",
+    "files": {
+      "vad/silero/v4.0/silero_vad.onnx": {
+        "url": "https://github.com/snakers4/silero-vad/raw/v4.0/files/silero_vad.onnx",
+        "sha256": "a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28"
+      }
+    }
+  },
+  {
+    "id": "firered-stream",
+    "label": "FireRedVAD streaming",
+    "loader": "firered",
+    "onnx": "vad/firered/fireredvad_stream_vad.onnx",
+    "cmvn": "vad/firered/cmvn.ark",
+    "rates": [16000],
+    "hop_s": 0.01,
+    "default_threshold": 0.5,
+    "suggested_threshold": 0.7,
+    "kind": "streaming",
+    "licence": "Apache-2.0",
+    "notes": "kaldi fbank + CMVN; 16 kHz only. Best at 0.7 on PR-42 (7/7, 0 extra). Run as one whole-sequence call; streamed in 10/20/50 ms chunks with carried caches it gives bit-identical probabilities (check_vad_parity.py --only firered).",
+    "files": {
+      "vad/firered/fireredvad_stream_vad.onnx": {
+        "url": "https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/71352f2c93c110410189e0ed98ab85ea24e8ad1c/pretrained_models/onnx_models/fireredvad_stream_vad.onnx",
+        "sha256": "33779744678dbac7ebbc6c593ce6bc1a9b6ae7bba2353d2e805528e6ce95e3f3"
+      },
+      "vad/firered/cmvn.ark": {
+        "url": "https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/71352f2c93c110410189e0ed98ab85ea24e8ad1c/pretrained_models/onnx_models/cmvn.ark",
+        "sha256": "c87f6f13edf0f0ec7535ddfc9cc3387d9268cb234b70182d566c5e2edf3ca473"
+      }
+    },
+    "verify_files": {
+      "vad/firered/fireredvad_stream_vad_with_cache.onnx": {
+        "url": "https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/71352f2c93c110410189e0ed98ab85ea24e8ad1c/pretrained_models/onnx_models/fireredvad_stream_vad_with_cache.onnx",
+        "sha256": "b3c97836130dc34fc32d56fab551e88cf9454511de2b3c250a5e6578dee74b93"
+      }
+    }
+  },
+  {
+    "id": "firered-offline",
+    "label": "FireRedVAD offline",
+    "loader": "firered",
+    "onnx": "vad/firered/fireredvad_vad.onnx",
+    "cmvn": "vad/firered/cmvn.ark",
+    "rates": [16000],
+    "hop_s": 0.01,
+    "default_threshold": 0.5,
+    "suggested_threshold": 0.7,
+    "kind": "offline",
+    "licence": "Apache-2.0",
+    "notes": "Non-causal: sees the whole file. A reference, not a live candidate.",
+    "files": {
+      "vad/firered/fireredvad_vad.onnx": {
+        "url": "https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/71352f2c93c110410189e0ed98ab85ea24e8ad1c/pretrained_models/onnx_models/fireredvad_vad.onnx",
+        "sha256": "a226e68e695548754a9ab5480a55bbcb8522aa69111cb97e4f093ddce63ad5dc"
+      },
+      "vad/firered/cmvn.ark": {
+        "url": "https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/71352f2c93c110410189e0ed98ab85ea24e8ad1c/pretrained_models/onnx_models/cmvn.ark",
+        "sha256": "c87f6f13edf0f0ec7535ddfc9cc3387d9268cb234b70182d566c5e2edf3ca473"
+      }
+    }
+  },
+  {
+    "id": "ten",
+    "label": "TEN VAD (licence: non-compete, benchmark only)",
+    "loader": "ten",
+    "rates": [16000],
+    "hop_s": 0.016,
+    "default_threshold": 0.5,
+    "suggested_threshold": 0.7,
+    "kind": "streaming",
+    "licence": "Apache-2.0 + Agora non-compete ('may not Deploy the ten-vad in a way that competes with Agora's offerings') — benchmark only until legal clears it",
+    "notes": "pip ten-vad 1.0.6.8 (prebuilt library, weights inside it). Best at 0.7 on PR-42.",
+    "files": {}
+  },
+  {
+    "id": "earshot",
+    "label": "Earshot",
+    "loader": "earshot",
+    "rates": [16000],
+    "hop_s": 0.016,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "MIT OR Apache-2.0",
+    "notes": "pip earshot 1.2.2 (weights inside the wheel).",
+    "files": {}
+  },
+  {
+    "id": "marblenet-v2",
+    "label": "NVIDIA MarbleNet v2.0 (frame VAD, multilingual) via vadonnx",
+    "loader": "vadonnx",
+    "vadonnx_name": "marblenet",
+    "onnx": "vad/vadonnx/marblenet.onnx",
+    "rates": [16000],
+    "hop_s": 0.02,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "NVIDIA Open Model License; ONNX conversion by vadonnx (TigreGotico, Apache-2.0)",
+    "notes": "Over-triggered on PR-42 (11–19 extra).",
+    "files": {
+      "vad/vadonnx/marblenet.onnx": {
+        "url": "https://huggingface.co/TigreGotico/frame-vad-marblenet-onnx/resolve/e8786fe74e055954901eb553cc9c3145323981cc/marblenet.onnx",
+        "sha256": "4ad3364be94d462b5fd4fa39910c24967dbb9dba436e27bcff7a88359515e491"
+      }
+    }
+  },
+  {
+    "id": "fsmn-16k",
+    "label": "FunASR FSMN-VAD 16 kHz via vadonnx",
+    "loader": "vadonnx",
+    "vadonnx_name": "fsmn",
+    "onnx": "vad/vadonnx/fsmn_vad_16k.onnx",
+    "rates": [16000],
+    "hop_s": 0.01,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "FunASR model licence (MODEL_LICENSE); ONNX conversion by vadonnx (TigreGotico, Apache-2.0)",
+    "notes": "Far too trigger-happy on PR-42 (60–100+ extra).",
+    "files": {
+      "vad/vadonnx/fsmn_vad_16k.onnx": {
+        "url": "https://huggingface.co/TigreGotico/fsmn-vad-onnx/resolve/2216bade214cd80e818bce2c823c878dba117898/model.onnx",
+        "sha256": "756887ce01695a9bb00dd85ca0f743653de03b18ba54d2e9ef4f4bb9b3edbf9f"
+      }
+    }
+  },
+  {
+    "id": "fsmn-8k",
+    "label": "FunASR FSMN-VAD 8 kHz (publisher's quantised ONNX)",
+    "loader": "fsmn8k",
+    "onnx": "vad/fsmn8k/model_quant.onnx",
+    "mvn": "vad/fsmn8k/am.mvn",
+    "rates": [8000],
+    "hop_s": 0.01,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "FunASR model licence (MODEL_LICENSE)",
+    "notes": "Chinese-trained 8 kHz model, never tested before. ModelScope iic/speech_fsmn_vad_zh-cn-8k-common-onnx @ v2.0.4.",
+    "files": {
+      "vad/fsmn8k/model_quant.onnx": {
+        "url": "https://www.modelscope.cn/models/iic/speech_fsmn_vad_zh-cn-8k-common-onnx/resolve/v2.0.4/model_quant.onnx",
+        "sha256": "13981515a9d0898b51ca700bb1115ba16a33b3ae78fd21cceac219350e873a8c"
+      },
+      "vad/fsmn8k/am.mvn": {
+        "url": "https://www.modelscope.cn/models/iic/speech_fsmn_vad_zh-cn-8k-common-onnx/resolve/v2.0.4/am.mvn",
+        "sha256": "dc73f9f3cdf8246823ca82cda1a31fa6984d5d2848c879c1e1e7cb33b5f1c7ab"
+      }
+    }
+  },
+  {
+    "id": "pyannote-seg3",
+    "label": "pyannote segmentation-3.0 (offline reference) via vadonnx",
+    "loader": "vadonnx",
+    "vadonnx_name": "pyannote",
+    "onnx": "vad/vadonnx/pyannote_seg3.onnx",
+    "rates": [16000],
+    "hop_s": 0.017,
+    "default_threshold": 0.5,
+    "kind": "offline",
+    "licence": "MIT (upstream gated on HuggingFace); ONNX conversion by vadonnx (TigreGotico, Apache-2.0)",
+    "notes": "10 s windows, sees the future: a reference labeller, not a live candidate.",
+    "files": {
+      "vad/vadonnx/pyannote_seg3.onnx": {
+        "url": "https://huggingface.co/TigreGotico/pyannote-segmentation-3.0-onnx/resolve/dd19a60106a77a38aa2eea2ab07338ce2e21634f/model.onnx",
+        "sha256": "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25"
+      }
+    }
+  },
+  {
+    "id": "webrtc-3",
+    "label": "WebRTC VAD mode 3 (binary)",
+    "loader": "webrtc",
+    "mode": 3,
+    "rates": [16000],
+    "hop_s": 0.03,
+    "binary": true,
+    "kind": "streaming",
+    "licence": "BSD (WebRTC); webrtcvad-wheels MIT",
+    "notes": "Energy-like; a binary flag per 30 ms, so the threshold does not apply.",
+    "files": {}
+  },
+  {
+    "id": "aic-vad-ms-2.1",
+    "label": "ai-coustics standalone VAD MS 2.1 xxs (aic-sdk 3.2, own key)",
+    "loader": "aic_vad",
+    "model_id": "vad-ms-2.1-xxs-16khz",
+    "model_file": "vad/aic/vad_ms_2_1_xxs_16khz_mw7jdprk_v36.aicmodel",
+    "rates": [16000],
+    "hop_s": 0.015,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "aic-sdk (Apache-2.0 wrapper over a proprietary core); needs AIC_LICENSE_KEY",
+    "notes": "Never tested before. Raw model probability stored (the SDK's hold/min-duration post-processing is replaced by the shared segmenter). ai-coustics says to feed it raw audio.",
+    "files": {
+      "vad/aic/vad_ms_2_1_xxs_16khz_mw7jdprk_v36.aicmodel": {
+        "aic_model_id": "vad-ms-2.1-xxs-16khz",
+        "sha256": "060f15d4e576bd2df0ff472acec8c928b8829d4b2efa8907d4feb5388a30e5d2"
+      }
+    }
+  },
+  {
+    "id": "aic-vad-vf-2.0",
+    "label": "ai-coustics standalone VAD VF 2.0 s (aic-sdk 3.2, own key)",
+    "loader": "aic_vad",
+    "model_id": "vad-vf-2.0-s-16khz",
+    "model_file": "vad/aic/vad_vf_2_0_s_16khz_gf70x7zf_v14.aicmodel",
+    "rates": [16000],
+    "hop_s": 0.015,
+    "default_threshold": 0.5,
+    "kind": "streaming",
+    "licence": "aic-sdk (Apache-2.0 wrapper over a proprietary core); needs AIC_LICENSE_KEY",
+    "notes": "Never tested before. Raw model probability stored. ai-coustics says to feed it raw audio.",
+    "files": {
+      "vad/aic/vad_vf_2_0_s_16khz_gf70x7zf_v14.aicmodel": {
+        "aic_model_id": "vad-vf-2.0-s-16khz",
+        "sha256": "dbbd7995d1cfb35c7a06d182754d02578ccfe6919ac7a1695800ba641cb572ea"
+      }
+    }
+  },
+  {
+    "id": "lkaic-flag",
+    "label": "ai-coustics LiveKit plugin VAD flag (lk.aic-vad, from ticket 1's cloud replay)",
+    "loader": "lkaic_flag",
+    "rates": [],
+    "hop_s": 0.05,
+    "binary": true,
+    "kind": "streaming",
+    "licence": "livekit-plugins-ai-coustics 0.3.2, LiveKit ToS (metered on LiveKit Cloud)",
+    "notes": "Not inference here: reads <cid>.aicvad.npy written by the cloud replay for lkaic-* candidates. Available only on those sources; the flag is the enhancer's own, decided on the raw input.",
+    "files": {}
+  },
+  {
+    "id": "legacy-silero",
+    "label": "Silero as recorded with the run (the old per-run VAD pass)",
+    "loader": "legacy_spans",
+    "rates": [],
+    "fixed": true,
+    "kind": "streaming",
+    "licence": "MIT (Silero), through livekit-plugins-silero",
+    "notes": "Not inference here: reads the spans the old per-run Silero pass stored with the run (input_vad, candidates[].vad), exactly, under the parameters they were recorded with. Never re-segmented and never ranked; there so an old run keeps the cyan it was judged by. Runs recorded since that pass was removed have none.",
+    "files": {}
+  }
+]

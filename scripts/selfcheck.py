@@ -182,6 +182,92 @@ def check_alignment(tmp: Path, candidates: list[dict]) -> None:
         )
 
 
+def check_aic_delay(tmp: Path, candidates: list[dict]) -> None:
+    """Each ai-coustics SDK model's output shift must be the delay the SDK reports.
+
+    The wrapper adds no shift of its own, so `get_audio_delay()` (reported as
+    latency.output_delay_ms) is the whole story — if a future SDK changed that,
+    or the wrapper started padding, every gap window would slide silently.
+    Measured 2026-09-29 on aic-sdk 3.2.0: 30 ms for all twelve models, at 8, 16
+    and 48 kHz alike.
+    """
+    from nc_bench.pipeline import run_chain
+
+    rng = np.random.default_rng(11)
+    n = int(RATE * 2.5)
+    env = 0.5 + 0.5 * np.sin(2 * np.pi * 0.7 * np.arange(n) / RATE)
+    x = (0.15 * env * rng.standard_normal(n)).astype(np.float32)
+    src = tmp / "aic_align_input.wav"
+    sf.write(src, x, RATE)
+    for cand in candidates:
+        chain = cand.get("chain") or []
+        if len(chain) != 1 or chain[0].get("proc") != "aic" or not chain_available(chain)[0]:
+            continue
+        out = tmp / f"aic_align_{cand['id']}.wav"
+        timing = run_chain(src, chain, out)
+        y, r = sf.read(out, dtype="float32")
+        xr = soxr.resample(x, RATE, r).astype(np.float32)
+        span = min(len(xr), len(y), 2 * r)
+        c = np.correlate(y[:span] - y[:span].mean(), xr[:span] - xr[:span].mean(), mode="full")
+        lag_ms = (int(np.argmax(c)) - (span - 1)) / r * 1000
+        reported = timing["latency"]["output_delay_ms"]
+        assert reported is not None, f"{cand['id']}: SDK delay not reported"
+        assert abs(lag_ms - reported) <= 2, (
+            f"{cand['id']}: output shift {lag_ms:.1f} ms, SDK reports {reported} ms"
+        )
+        print(f"OK   aic delay {cand['id']}: shift {lag_ms:.1f} ms = SDK {reported} ms "
+              f"(algo delay {timing['latency']['algo_delay_ms']} ms with the block)")
+
+
+def check_cloud_specs(candidates: list[dict]) -> None:
+    """Every cloud candidate's spec builds into a filter, without the network.
+
+    The filters only authenticate once they sit on a track in a Cloud room, so
+    this cannot prove one runs — cloud_replay's passthrough gate does that — but
+    it catches a misspelt model or an out-of-range option before a real-time
+    replay is spent finding out.
+    """
+    from nc_bench import lk_cloud
+
+    for cand in candidates:
+        if "lk_model" not in cand or cand.get("historical"):
+            continue
+        nc = lk_cloud.build(cand["lk_model"], cand.get("lk_options"))
+        assert (nc is None) == (cand["lk_model"] == lk_cloud.RAW), cand["id"]
+        close = getattr(nc, "_close", None)
+        if close is not None:
+            close()
+        print(f"OK   cloud spec {cand['id']}: {type(nc).__name__}")
+
+
+def check_replay_alignment() -> None:
+    """cloud_replay's alignment on a known answer: a 2.345 s lead-in is found to
+    the sample, a clean replay shows no drift, and a 20 ms inserted gap (what a
+    starved publisher does) shows up as 20 ms of drift."""
+    from nc_bench import cloud_replay as cr
+
+    fs = config.PIPELINE_RATE
+    rng = np.random.default_rng(1)
+    n = 40 * fs
+    t = np.arange(n) / fs
+    env = (np.sin(2 * np.pi * 0.37 * t) > 0.2) * (0.5 + 0.5 * np.sin(2 * np.pi * 3 * t))
+    x = (0.2 * env * rng.standard_normal(n) + 0.005 * rng.standard_normal(n)).astype(np.float32)
+    lead = int(2.345 * fs)
+    y = np.concatenate([np.zeros(lead, np.float32), 0.8 * x, np.zeros(fs, np.float32)])
+    got = cr.lead_in(x, y)
+    assert got == lead, f"lead-in {got} != {lead}"
+    drift, used = cr.lag_drift_ms(x, y[got : got + n])
+    assert drift == 0 and used > 5, (drift, used)
+    k = lead + 20 * fs
+    y2 = np.concatenate([y[:k], np.zeros(int(0.02 * fs), np.float32), y[k:]])
+    got2 = cr.lead_in(x, y2)
+    drift2, _ = cr.lag_drift_ms(x, y2[got2 : got2 + n])
+    assert abs(drift2 - 20) <= 1, f"a 20 ms gap read as {drift2} ms of drift"
+    _, info = cr._aicvad(np.ones(1000, np.int8), 2.345, 40.0)
+    assert info["t0_s"] == -0.045 and info["frames"] == 801, info
+    print(f"OK   cloud replay alignment: lead-in exact, 20 ms gap -> {drift2} ms drift")
+
+
 def main() -> None:
     candidates = json.loads(config.CANDIDATES_FILE.read_text())
     tmp = Path(tempfile.mkdtemp(prefix="nc-selfcheck-"))
@@ -193,7 +279,8 @@ def main() -> None:
     ran = 0
     for cand in candidates:
         if "lk_model" in cand:
-            print(f"SKIP {cand['id']}: live-rail (Cloud) candidate — needs a live session")
+            print(f"SKIP {cand['id']}: LiveKit Cloud candidate — runs on the live or "
+                  "cloud replay rail, not offline (spec checked below)")
             continue
         ok, why = chain_available(cand["chain"])
         if not ok:
@@ -236,7 +323,10 @@ def main() -> None:
 
     check_spec_reconstruction()
     check_alignment(tmp, candidates)
+    check_aic_delay(tmp, candidates)
     check_single_threaded(tmp, candidates)
+    check_cloud_specs(candidates)
+    check_replay_alignment()
 
     # ---- scoring stack ----
     from nc_bench import scoring

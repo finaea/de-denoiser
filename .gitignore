@@ -14,6 +14,13 @@ models/aic/
 models/hush/
 models/dtln/
 models/dnsmos/
+models/vad/
+
+# These import real incident calls into data/. They embed call identifiers,
+# so they stay on the machines that hold the recordings.
+scripts/import_incidents.py
+scripts/import_hush_aih.py
+scripts/import_pr42_replay.py
 
 # Hecttor's SDK wheel is proprietary and must never be redistributed here.
 # Installed separately from a Hecttor licence — see README.

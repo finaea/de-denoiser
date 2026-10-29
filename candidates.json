@@ -100,6 +100,11 @@
     "chain": [{ "proc": "hush", "atten_lim_db": 12 }]
   },
   {
+    "id": "voxlock",
+    "label": "VoxLock 1.1 (open caller-voice isolation, int8, enrols on the first 3 s of speech)",
+    "chain": [{ "proc": "voxlock" }]
+  },
+  {
     "id": "dtln",
     "label": "DTLN (open, suppression only)",
     "chain": [{ "proc": "dtln" }]
@@ -115,39 +120,144 @@
     "chain": [{ "proc": "rnnoise", "model": "bd" }]
   },
   {
-    "id": "aic-sdk",
-    "label": "ai-coustics standalone SDK (offline, own trial key from .env)",
-    "chain": [{ "proc": "aic" }]
+    "id": "aicsdk-quail-ms-l-16k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Quail Multi Speaker L @16 kHz",
+    "chain": [{ "proc": "aic", "model": "quail-ms-l-16khz" }]
+  },
+  {
+    "id": "aicsdk-quail-ms-s-16k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Quail Multi Speaker S @16 kHz",
+    "chain": [{ "proc": "aic", "model": "quail-ms-s-16khz" }]
+  },
+  {
+    "id": "aicsdk-quail-ms-l-8k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Quail Multi Speaker L @ native 8 kHz (telephony)",
+    "chain": [{ "proc": "aic", "model": "quail-ms-l-8khz" }]
+  },
+  {
+    "id": "aicsdk-quail-ms-s-8k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Quail Multi Speaker S @ native 8 kHz (telephony)",
+    "chain": [{ "proc": "aic", "model": "quail-ms-s-8khz" }]
+  },
+  {
+    "id": "aicsdk-vf22-l",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Voice Focus 2.2 L @16 kHz (voice isolation)",
+    "chain": [{ "proc": "aic", "model": "quail-vf-2.2-l-16khz" }]
+  },
+  {
+    "id": "aicsdk-vf22-s",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Voice Focus 2.2 S @16 kHz (voice isolation)",
+    "chain": [{ "proc": "aic", "model": "quail-vf-2.2-s-16khz" }]
+  },
+  {
+    "id": "aicsdk-rook-ms-l-48k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Rook Multi Speaker L @48 kHz (human listening)",
+    "chain": [{ "proc": "aic", "model": "rook-ms-l-48khz" }]
+  },
+  {
+    "id": "aicsdk-rook-ms-s-48k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Rook Multi Speaker S @48 kHz (human listening)",
+    "chain": [{ "proc": "aic", "model": "rook-ms-s-48khz" }]
+  },
+  {
+    "id": "aicsdk-rook-ms-l-16k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Rook Multi Speaker L @16 kHz (human listening)",
+    "chain": [{ "proc": "aic", "model": "rook-ms-l-16khz" }]
+  },
+  {
+    "id": "aicsdk-rook-ms-s-16k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Rook Multi Speaker S @16 kHz (human listening)",
+    "chain": [{ "proc": "aic", "model": "rook-ms-s-16khz" }]
+  },
+  {
+    "id": "aicsdk-rook-ms-l-8k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Rook Multi Speaker L @ native 8 kHz (human listening)",
+    "chain": [{ "proc": "aic", "model": "rook-ms-l-8khz" }]
+  },
+  {
+    "id": "aicsdk-rook-ms-s-8k",
+    "label": "ai-coustics SDK 3.2 (standalone, own key) · Rook Multi Speaker S @ native 8 kHz (human listening)",
+    "chain": [{ "proc": "aic", "model": "rook-ms-s-8khz" }]
+  },
+  {
+    "id": "cloud-raw",
+    "label": "No NC · via Cloud replay (Opus 256k control)",
+    "lk_model": "RAW"
   },
   {
     "id": "krisp-nc",
-    "label": "Krisp NC (LiveKit Cloud · live only)",
+    "label": "Krisp NC (LiveKit Cloud)",
     "lk_model": "NC"
   },
   {
     "id": "krisp-bvc",
-    "label": "Krisp BVC (LiveKit Cloud · live only)",
+    "label": "Krisp BVC (LiveKit Cloud)",
     "lk_model": "BVC"
   },
   {
     "id": "krisp-bvc-tel",
-    "label": "Krisp BVCTelephony (LiveKit Cloud · live only)",
+    "label": "Krisp BVCTelephony (LiveKit Cloud)",
     "lk_model": "BVCTelephony"
   },
   {
-    "id": "aic-quail-l",
-    "label": "ai-coustics QUAIL_L — noise suppression (LiveKit Cloud · live only)",
+    "id": "krisp-viva",
+    "label": "Krisp VIVA voice isolation (LiveKit Cloud · plugins-krisp 0.4.3)",
+    "lk_model": "KRISP:VIVA"
+  },
+  {
+    "id": "krisp-viva-tel",
+    "label": "Krisp VIVA voice isolation, telephony (LiveKit Cloud · plugins-krisp 0.4.3)",
+    "lk_model": "KRISP:VIVA_TEL"
+  },
+  {
+    "id": "lkaic-quail-l",
+    "label": "ai-coustics QUAIL_L via LiveKit (plugin 0.3.2) — noise suppression",
     "lk_model": "AIC:QUAIL_L"
   },
   {
-    "id": "aic-vf-s",
-    "label": "ai-coustics Voice Focus S (QUAIL_VF_S) — voice isolation (LiveKit Cloud · live only)",
+    "id": "lkaic-vf22-l",
+    "label": "ai-coustics Voice Focus 2.2 L via LiveKit (plugin 0.3.2, QUAIL_VF_L) — voice isolation",
+    "lk_model": "AIC:QUAIL_VF_L"
+  },
+  {
+    "id": "lkaic-vf22-s",
+    "label": "ai-coustics Voice Focus 2.2 S via LiveKit (plugin 0.3.2, QUAIL_VF_S) — voice isolation",
     "lk_model": "AIC:QUAIL_VF_S"
   },
   {
+    "id": "lkaic-rook-s",
+    "label": "ai-coustics ROOK_S via LiveKit (plugin 0.3.2) — human-listening enhancer",
+    "lk_model": "AIC:ROOK_S"
+  },
+  {
+    "id": "lkaic-quail-l-bypass",
+    "label": "ai-coustics QUAIL_L via LiveKit, bypass — audio stays raw, VAD flag only",
+    "lk_model": "AIC:QUAIL_L",
+    "lk_options": { "bypass": 1.0 }
+  },
+  {
+    "id": "lkaic-rook-s-bypass",
+    "label": "ai-coustics ROOK_S via LiveKit, bypass — audio stays raw, VAD flag only",
+    "lk_model": "AIC:ROOK_S",
+    "lk_options": { "bypass": 1.0 }
+  },
+  {
+    "id": "aic-quail-l",
+    "label": "ai-coustics QUAIL_L via LiveKit (plugin 0.3.0 · historical, not reproducible)",
+    "lk_model": "AIC:QUAIL_L",
+    "historical": true
+  },
+  {
+    "id": "aic-vf-s",
+    "label": "ai-coustics Voice Focus S via LiveKit (plugin 0.3.0 · Voice Focus 2.1 · historical, not reproducible)",
+    "lk_model": "AIC:QUAIL_VF_S",
+    "historical": true
+  },
+  {
     "id": "aic-vf-l",
-    "label": "ai-coustics Voice Focus L (QUAIL_VF_L) — voice isolation (LiveKit Cloud · live only)",
-    "lk_model": "AIC:QUAIL_VF_L"
+    "label": "ai-coustics Voice Focus L via LiveKit (plugin 0.3.0 · Voice Focus 2.1 · historical, not reproducible)",
+    "lk_model": "AIC:QUAIL_VF_L",
+    "historical": true
   },
   {
     "id": "dpdfnet2-8k+hecttor-coda-vi",

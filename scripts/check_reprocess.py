@@ -1,11 +1,10 @@
 """Does reprocessing a run keep everything that was NOT the candidate list?
 
 Worth a script because _process_run was written for fresh runs and overwrites
-meta keys on purpose — meta["script"] is assigned from its argument, and
-meta["vad_params"] used to be reset to defaults every time. Reprocess routes
-around both. Nothing about a dropped note or a silently reset VAD rate is visible
-in the UI afterwards: the run just looks finished, every WER is gone or every span
-was measured at a rate that no longer matches the marks drawn against it.
+meta keys on purpose — meta["script"] is assigned from its argument. Reprocess
+routes around that, and the script is now derived from the marks' references,
+which must survive too. Nothing about a dropped note or a lost reference is
+visible in the UI afterwards: the run just looks finished, with every WER gone.
 
 Runs against a throwaway copy of a real run's input.wav, so it never touches
 recorded data.
@@ -20,13 +19,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nc_bench import server, store  # noqa: E402
+from nc_bench import scoring, server, store  # noqa: E402
 
 FIRST = ["none"]
 THEN = ["none", "hecttor-coda-vi", "gtcrn"]
 SCRIPT = "so this is a mic test on how well the noise is working"
 NOTE = "conditions worth remembering"
 MARKS = [[1.0, 4.0], [6.0, 9.0]]
+REFS = ["so this is a mic test", "on how well the noise is working"]
 
 
 def _find_input() -> Path | None:
@@ -44,8 +44,6 @@ async def main() -> None:
         return
     server.broadcast = lambda ev: asyncio.sleep(0)  # no websocket in a script
 
-    # a phone-source run, so the 8 kHz VAD default is in play and a reset to the
-    # global default would be visible
     run_id, run_dir = store.new_run("phone", NOTE)
     made = [run_id]
     try:
@@ -62,16 +60,15 @@ async def main() -> None:
         await server.set_truth(run_id, {"spans": MARKS})
         before = store.load_meta(run_id)
         assert [c["id"] for c in before["candidates"]] == FIRST
-        assert before["vad_params"]["sample_rate"] == 8000, before["vad_params"]
-        print(f"seeded {run_id}: {FIRST} · rate {before['vad_params']['sample_rate']} · "
-              f"{len(before['truth_spans'])} marks")
+        assert before["script"] == SCRIPT and before.get("script_source") == "legacy", before
+        print(f"seeded {run_id}: {FIRST} · {len(before['truth_spans'])} marks · a typed script")
 
-        # deliberately diverge the rate, so a reset to defaults is detectable
-        await server.rerun_vad(run_id, {"params": {"sample_rate": 16000,
-                                                   "min_silence_duration": 0.9}})
+        # references on both marks take the script over
+        ids = [m["id"] for m in (await server.api_run(run_id))["truth_marks"]]
+        await server.set_refs(run_id, {"refs": dict(zip(ids, REFS))})
         mid = store.load_meta(run_id)
-        assert mid["vad_params"]["sample_rate"] == 16000
-        print("       then forced rate 16000 / min_silence 0.9 (a reset would undo this)")
+        assert mid["script"] == " ".join(REFS) and mid["script_legacy"] == SCRIPT, mid["script"]
+        print("       then referenced both marks: the script is now built from them")
 
         r = await server.reprocess_run(run_id, {"candidates": THEN, "concurrency": 2})
         assert r["status"] == "processing"
@@ -79,35 +76,43 @@ async def main() -> None:
             await asyncio.sleep(0.5)
 
         after = store.load_meta(run_id)
+        # merged by id: the stored order first, new ids after in ticked order —
+        # here FIRST is a prefix of THEN, so the order equals THEN
         assert [c["id"] for c in after["candidates"]] == THEN, after["candidates"]
-        print(f"OK   candidate set replaced: {[c['id'] for c in after['candidates']]}")
-        assert after["script"] == SCRIPT, f"script lost: {after['script']!r}"
-        print("OK   script survived (it is a _process_run argument, so this is the fragile one)")
+        print(f"OK   candidate set merged: {[c['id'] for c in after['candidates']]}")
+        assert after["script"] == " ".join(REFS), f"script lost: {after['script']!r}"
+        assert [m["ref"] for m in after["truth_marks"]] == REFS, after["truth_marks"]
+        print("OK   references and the script built from them survived (the fragile one)")
         assert after["note"] == NOTE, f"note lost: {after['note']!r}"
         print("OK   note survived")
         assert after["truth_spans"] == [[float(a), float(b)] for a, b in MARKS], after["truth_spans"]
         print("OK   hand marks survived")
         assert after["source"] == "phone", after["source"]
         print("OK   source unchanged (an upload copy would have become 'upload')")
-        assert after["vad_params"] == mid["vad_params"], (
-            f"vad params reset to defaults: {after['vad_params']} != {mid['vad_params']}"
-        )
-        print(f"OK   VAD params kept the run's own values, not defaults "
-              f"(rate {after['vad_params']['sample_rate']}, "
-              f"min_silence {after['vad_params']['min_silence_duration']})")
 
-        # the new candidates must be measured and scored, not just listed
-        assert all(c.get("vad") for c in after["candidates"]), "a candidate has no spans"
-        assert all(c.get("truth_score") for c in after["candidates"]), "a candidate is unscored"
-        assert all(c["vad"]["params"] == after["vad_params"] for c in after["candidates"])
-        print("OK   every new candidate got spans + a truth score at the run's own params")
+        # the new candidates must be transcribed and scored against the
+        # references, not just listed. An unavailable one (Hecttor without its
+        # wheel/key) is an error record — that is right, not a failure
+        known = server._candidates_by_id()
+        done = [c for c in after["candidates"] if c.get("status") == "done"]
+        for c in after["candidates"]:
+            if not known[c["id"]]["available"]:
+                assert c.get("status") == "error", f"{c['id']} is unavailable but not an error"
+        assert len(done) >= 2, [c["id"] for c in done]
+        for c in done:
+            assert c["scores"]["wer"] == scoring.wer(after["script"], c["stt"]["text"]), c["id"]
+            assert "vad" not in c, f"{c['id']} got per-run VAD spans; that pass is gone"
+        print(f"OK   every new candidate that ran ({[c['id'] for c in done]}) is scored against "
+              "the references, with no per-run VAD; unavailable ones are error records")
 
         # and the guards
         for label, rid, body, code in [
             ("unknown run", "nope", {"candidates": FIRST}, 404),
             ("no candidates", run_id, {}, 400),
             ("unknown candidate", run_id, {"candidates": ["bogus"]}, 400),
-            ("live-only candidate", run_id, {"candidates": ["krisp-nc"]}, 400),
+            # cloud candidates now replay a stored wav (cloud_replay), so the
+            # candidate a reprocess must refuse is a historical one
+            ("historical candidate", run_id, {"candidates": ["aic-vf-l"]}, 400),
         ]:
             try:
                 await server.reprocess_run(rid, body)
@@ -115,7 +120,7 @@ async def main() -> None:
             except Exception as e:
                 got = getattr(e, "status_code", None)
                 assert got == code, f"{label}: expected {code}, got {got} ({e})"
-        print("OK   guards reject unknown run / empty set / unknown id / live-only")
+        print("OK   guards reject unknown run / empty set / unknown id / historical")
 
         print("\ncheck_reprocess passed")
     finally:

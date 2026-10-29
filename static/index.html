@@ -137,6 +137,39 @@
   #tlBox, #resultsBox, #rankBox, #histBox {
     box-shadow: inset 0 2px 0 var(--accent), 0 14px 30px -28px #000;
   }
+  /* VAD bench: cyan like every other thing the VAD decided; its rankings gold
+     like the NC leaderboard, because they are read the same way */
+  #vadBenchBox { --accent: var(--vad); }
+  #vadRankBox  { --accent: var(--warning); }
+  #vadBenchBox, #vadRankBox { box-shadow: inset 0 2px 0 var(--accent), 0 14px 30px -28px #000; }
+  #vadList { max-height: 34vh; overflow-y: auto; margin-right: -4px; padding-right: 4px; }
+  #vadList .check { align-items: center; }
+  #vadList .check > span { flex: 1; }
+  #vadList .vbthr { width: 54px; padding: 2px 5px; flex: none; }
+  #vadList .vbthr:focus, #vbFields input:focus { border-color: var(--vad); box-shadow: 0 0 0 3px #22d3ee38; }
+  #vbTable { overflow-x: auto; margin-top: 10px; }
+  #vbTable th { cursor: pointer; white-space: nowrap; user-select: none; }
+  #vbTable th:hover { color: var(--vad-strong); }
+  #vbTable th.sorted { color: var(--vad-strong); }
+  #vbTable td { white-space: nowrap; font: 11px/1.4 var(--mono); padding: 4px 7px; }
+  #vbTable tr.na td { color: var(--body-subtle); opacity: .65; }
+  /* stale: computed from audio (or parameters) that are no longer current.
+     Kept visible for inspection, but struck through and out of every ranking */
+  #vbTable tr.stale td { color: var(--body-subtle); opacity: .5; text-decoration: line-through; }
+  #vbTable tr.stale td:first-child { text-decoration: none; }
+  #vbTable td.excl { color: var(--fg-warning); }
+  #vbTable tr.base td { background: #0d1f2480; }
+  #vbTable td.bad { color: var(--danger-strong); }
+  #vbTable td.good { color: var(--success-strong); }
+  #vbSources .check { display: inline-flex; margin: 4px 12px 0 0; }
+  #btnVbRun, #btnVbReseg, #btnVbStt { color: var(--vad-strong); box-shadow: inset 0 0 0 1px #22d3ee55; }
+  #btnVbRun:hover:not(:disabled), #btnVbReseg:hover:not(:disabled), #btnVbStt:hover:not(:disabled) {
+    background: var(--vad-soft); color: #d6fbff; box-shadow: inset 0 0 0 1px var(--vad);
+  }
+  #vadRankings table td { padding: 4px 7px; white-space: nowrap; }
+  /* a grid item's min-width is auto, so a nowrap table would push its column
+     past the track and the whole page would scroll sideways */
+  #vadRankings .vrcat { min-width: 0; overflow-x: auto; }
 
   /* square, mono, uppercase — every button on the page is a Pure button */
   button {
@@ -184,14 +217,10 @@
   button.mini.danger:hover:not(:disabled) {
     background: var(--danger); color: #fff; box-shadow: 0 6px 16px -8px #f43f5e;
   }
-  /* A control wears the colour of the thing it acts on: the two VAD buttons are
-     cyan like the spans they redraw, the speech-marking cluster is violet like
-     the ribbon it paints. Ids, not classes — the mark bar is rebuilt as innerHTML
-     on every click, so anything bound by hand would not survive. */
-  #btnVad, #btnSeg { color: var(--vad-strong); box-shadow: inset 0 0 0 1px #22d3ee55; }
-  #btnVad:hover:not(:disabled), #btnSeg:hover:not(:disabled) {
-    background: var(--vad-soft); color: #d6fbff; box-shadow: inset 0 0 0 1px var(--vad);
-  }
+  /* A control wears the colour of the thing it acts on: the speech-marking
+     cluster is violet like the ribbon it paints. Ids, not classes — the mark bar
+     is rebuilt as innerHTML on every click, so anything bound by hand would not
+     survive. */
   #btnMark, #btnMarkUndo, #btnMarkClear, #btnMarkCancel {
     color: var(--mark-strong); box-shadow: inset 0 0 0 1px #a78bfa55;
   }
@@ -232,6 +261,7 @@
   .check { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--body); cursor: pointer; margin-top: 7px; }
   .radio:hover, .check:hover { color: var(--heading); }
   .check .why { color: var(--body-subtle); font-size: 11px; }
+  .check.historical { opacity: 0.5; }
   .check input { margin-top: 2px; }
   .hint { font-size: 11px; line-height: 1.55; color: var(--body-subtle); margin-top: 9px; }
   .field { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
@@ -258,10 +288,6 @@
   textarea { width: 100%; resize: vertical; color: var(--heading); }
   textarea::placeholder { color: #78746d; }
   .num { width: 68px; }
-  /* the threshold boxes belong to the cyan spans they redraw, so they focus cyan */
-  #vadFields input:focus, #vadFields select:focus {
-    border-color: var(--vad); box-shadow: 0 0 0 3px #22d3ee38;
-  }
   input[type=file] { width: 100%; color: var(--body-subtle); padding: 6px; }
   input[type=file]::file-selector-button {
     border: 0; border-radius: 0; margin-right: 10px; cursor: pointer;
@@ -281,6 +307,16 @@
   canvas.wave { width: 100%; height: 64px; display: block; background: var(--deep);
                 border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
   canvas.wave:hover { border-color: var(--brand); box-shadow: 0 0 0 3px #ff7a1826; }
+
+  /* one view window shared by every waveform, so zooming into a stretch of the
+     call lines every candidate up under it; sticky so it stays in reach while
+     scrolling down a long card list */
+  #viewBar { position: sticky; top: 68px; z-index: 5; display: flex; align-items: center;
+             gap: 8px; flex-wrap: wrap; padding: 6px 10px; margin-bottom: 8px;
+             background: #0c0c0eee; backdrop-filter: blur(10px);
+             border: 1px solid var(--border); border-radius: 6px; color: var(--body-subtle); }
+  #viewBar input[type=range] { flex: 1 1 220px; min-width: 120px; accent-color: var(--brand); }
+  #viewBar input[type=range]:disabled { opacity: 0.35; }
 
   .cand-card { background: var(--near-black); border: 1px solid var(--border); border-radius: 6px;
                padding: 12px 14px; margin-top: 10px;
@@ -323,10 +359,8 @@
   /* the wells that quote a run back: script, VAD params, transcripts */
   .well { background: var(--deep); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
           border-left: 2px solid var(--accent, var(--border-strong)); }
-  /* the script is a human saying what was true — same violet as the marked
-     speech. The thresholds are the machine's opinion — same cyan as the spans. */
+  /* the reference is a human saying what was true — same violet as the marks */
   #scriptUsed { --accent: var(--mark); }
-  #vadBar     { --accent: var(--vad); }
   .cap { font: 700 10px/1.4 var(--mono); letter-spacing: .07em; text-transform: uppercase;
          color: var(--accent, var(--body-subtle)); margin-bottom: 5px; }
   .cap .note { text-transform: none; letter-spacing: .02em; color: var(--body-subtle); }
@@ -387,8 +421,56 @@
   nav.rail button {
     width: 40px; height: 40px; padding: 0; font-size: 14px; line-height: 1;
   }
+  /* the view controls under the jump buttons: icon on top, current value under
+     it, so the rail stays 40 px wide and still says what is set */
+  nav.rail .raildiv { width: 24px; height: 1px; background: var(--border-strong); margin: 4px 0; }
+  nav.rail button.rc { flex-direction: column; gap: 2px; text-transform: none; letter-spacing: 0; }
+  nav.rail .rc .ico { font-size: 15px; line-height: 1; }
+  nav.rail .rc .badge { font: 700 8px/1 var(--mono); color: var(--body-subtle); }
+  /* a layer toggle is lit in its layer's own colour when shown, dim when not */
+  nav.rail button.lyr .ico { color: var(--lyr); font-size: 18px; text-shadow: 0 0 8px var(--lyr); }
+  nav.rail button.lyr.off .ico { opacity: .22; text-shadow: none; }
+  nav.rail button.lyr.off { box-shadow: inset 0 0 0 1px var(--border); }
+  nav.rail button.lyr:not(.off) { box-shadow: inset 0 0 0 1px var(--lyr); }
+
+  /* the sidebar folds to a strip holding only its own toggle */
+  #btnSide { align-self: flex-end; padding: 4px 9px; font-size: 12px; flex: none; }
+  aside.collapsed { flex-basis: 30px; overflow: visible; padding-right: 0; margin-right: 0; }
+  aside.collapsed > :not(#btnSide) { display: none; }
+  aside.collapsed #btnSide { align-self: flex-start; }
+
+  /* hover popup over a cyan cut */
+  .cuttip { position: fixed; z-index: 40; max-width: 460px; pointer-events: none;
+            background: #0b0b0ef2; border: 1px solid var(--vad); border-radius: 6px;
+            padding: 8px 10px; box-shadow: 0 10px 28px -10px #000; font: 11px/1.5 var(--mono);
+            color: var(--body); }
+  .cuttip .h { color: var(--vad-strong); font-weight: 700; margin-bottom: 4px; }
+  .cuttip .t { color: var(--heading); white-space: pre-wrap; font-size: 12px; }
+  .cuttip .t.empty { color: var(--body-subtle); font-style: italic; }
+  .cuttip .r { color: var(--mark-strong); margin-top: 5px; white-space: pre-wrap; }
+  .cuttip .n { color: var(--body-subtle); margin-top: 4px; }
+
+  /* VAD-cut WER: one reference box per purple mark */
+  #vcRefs { max-height: 46vh; overflow-y: auto; margin: 6px -4px 0 0; padding-right: 4px; }
+  .vcref { display: grid; grid-template-columns: auto 132px 1fr auto auto; gap: 8px; align-items: start;
+           padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .vcref .vct { font: 11px/1.4 var(--mono); color: var(--mark-strong); padding-top: 5px; }
+  .vcref textarea { min-height: 30px; padding: 4px 7px; }
+  .vcref textarea:focus { border-color: var(--mark); box-shadow: 0 0 0 3px #a78bfa38; }
+  .vcref textarea.missing { border-color: #a78bfa66; }
+  /* expected empty: a reference, but one with no words */
+  .vcref textarea.nothing { border-style: dashed; opacity: .75; }
+  .vcref .vcempty.on { color: var(--mark-strong); background: var(--mark-soft); box-shadow: inset 0 0 0 1px var(--mark); }
+  .vcref .vcchk { font: 11px/1.4 var(--mono); color: var(--fg-warning); padding-top: 5px; }
+  .vcref .vcro { font: 12px/1.5 var(--mono); color: var(--heading); white-space: pre-wrap; padding-top: 4px; }
+  #btnRefSave { color: var(--mark-strong); box-shadow: inset 0 0 0 1px #a78bfa55; }
+  #btnRefSave:hover:not(:disabled) { background: var(--mark-soft); color: #eee7ff; box-shadow: inset 0 0 0 1px var(--mark); }
+  #vcWhy.blocked { color: var(--fg-warning); }
   /* each jump button lights up in the colour of the panel it lands on */
   nav.rail button[data-jump="resultsBox"]:hover {
+    color: var(--vad-strong); box-shadow: inset 0 0 0 1px #22d3ee66; background: var(--vad-soft);
+  }
+  nav.rail button[data-jump="vadBenchBox"]:hover {
     color: var(--vad-strong); box-shadow: inset 0 0 0 1px #22d3ee66; background: var(--vad-soft);
   }
   nav.rail button[data-jump="rankBox"]:hover {
@@ -418,7 +500,8 @@
 </header>
 
 <div class="layout">
-<aside>
+<aside id="side">
+  <button id="btnSide" class="mini" title="hide the sidebar (Start/Stop, source, candidates, VAD models)">⟨</button>
   <div class="box">
     <div class="btnrow">
       <button id="btnStart" class="primary">▶ Start</button>
@@ -452,101 +535,80 @@
   </div>
 
   <div class="box">
-    <h2>Reference script (optional)</h2>
-    <textarea id="script" style="min-height:66px"
-      placeholder="Type/paste exactly what will be (or was) said. If set, each candidate gets a real WER score against it."></textarea>
-    <div class="hint">Best used with a scripted test call — read this text during the recording.</div>
-  </div>
-
-  <div class="box">
-    <h2>Run notes (optional)</h2>
-    <textarea id="note" style="min-height:46px"
-      placeholder="Conditions worth recording for later: &quot;someone talking nearby&quot;, &quot;speakerphone at arm's length&quot;, &quot;quiet room&quot;."></textarea>
-    <div class="hint">Kept out of the reference script on purpose — describing the room
-      in there would be scored as unspoken words. Shows in history, and stays
-      editable once the run is loaded.</div>
-  </div>
-
-  <div class="box">
     <h2 style="display:flex;align-items:center;justify-content:space-between">Candidates
       <button id="btnAll" class="mini">select all</button></h2>
     <div id="candList" class="hint">loading…</div>
     <div class="hint">Tick what to run this session — singles or chains. Edit
       <code>candidates.json</code> to add combos; restart to reload.</div>
   </div>
+
+  <div class="box" id="vadModelsBox">
+    <h2 style="display:flex;align-items:center;justify-content:space-between">VAD models
+      <button id="btnVadAll" class="mini">select all</button></h2>
+    <div id="vadList" class="hint">loading…</div>
+    <div class="hint">What the <b>VAD bench</b> panel runs on a loaded run, and the order the
+      <b style="color:var(--vad-strong)">cyan</b> marker is picked from (first ticked VAD with
+      results). The box on each row is a per-model <b>threshold override</b> (blank = the
+      bench's activation; FireRed and TEN were best at 0.7 on PR-42). Edit
+      <code>vad_candidates.json</code> to add models; <code>scripts/fetch_vads.py</code>
+      fetches their weights.</div>
+  </div>
 </aside>
 
 <main>
   <div class="box" id="tlBox">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span id="tlTitle">Subscriber timeline</span>
-      <span class="h2tools">
-        <label for="waveScale">wave scale</label>
-        <select id="waveScale"></select>
-        <label for="waveHeight" style="margin-left:4px">height</label>
-        <select id="waveHeight"></select>
-        <label for="vadShow" style="margin-left:4px"
-          title="Silero VAD spans — the turns a live deployment would cut and send to STT">
-          <input type="checkbox" id="vadShow" checked style="vertical-align:-1px" /> VAD</label>
-        <label for="vadSnap"
-          title="clicks on a waveform snap to the nearest VAD span edge, so playback starts exactly where the VAD opened or closed a turn">
-          <input type="checkbox" id="vadSnap" style="vertical-align:-1px" /> snap</label>
-      </span></h2>
+    <h2><span id="tlTitle">Subscriber timeline</span></h2>
     <canvas id="timeline" class="timeline" width="1600" height="280"></canvas>
     <div class="hint" id="tlHint">Live RMS of the subscribed track (20 ms windows).
-      Scale/height apply to every waveform below too — <b>click any of them to play
-      from that point</b>; a white playhead tracks it.</div>
+      The wave scale and height on the right-hand rail apply to every waveform below too —
+      <b>click any of them to play from that point</b>; a white playhead tracks it.</div>
   </div>
 
   <div class="box" id="resultsBox">
     <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">Results
       <span id="resRun" class="h2tools"></span>
       <button id="btnReproc" class="mini" style="display:none"
-        title="re-run this run's stored input.wav through whatever is ticked in the sidebar">↻ re-run ticked candidates</button>
-      <select id="werMode" style="display:none"
-        title="which transcript + WER the cards and rankings show — the audio and waveform stay the full NC output either way">
-        <option value="seg">WER: ✂ VAD-cut (production-real)</option>
-        <option value="whole">WER: whole-file</option>
-      </select></h2>
+        title="re-run this run's stored input.wav through whatever is ticked in the sidebar">↻ re-run ticked candidates</button></h2>
     <div id="noteEdit" class="row" style="display:none;margin-bottom:10px">
       <input type="text" id="runNote" style="flex:1"
-        placeholder="note for this run — what were the conditions?" />
+        placeholder="note for this run — what were the conditions? (kept out of the reference: it would score as unspoken words)" />
       <button id="btnNote" class="mini">save note</button>
     </div>
-    <!-- the script this run was actually scored against. Every WER on the cards
-         below is relative to this exact text, so revisiting a run without it
-         means the numbers cannot be interpreted. -->
+    <!-- The full reference every WER on this run is scored against. Never typed:
+         it is the purple marks' references, joined in time order, once every mark
+         has one (VAD bench → VAD-cut WER). Shown so the numbers can be read. -->
     <div id="scriptUsed" style="display:none;margin-bottom:12px">
-      <div class="cap">Reference script used for this run
+      <div class="cap">Full reference script
         <span id="scriptUsedWords" class="note"></span></div>
       <div id="scriptUsedText" class="well"
         style="font:12px/1.6 var(--mono);white-space:pre-wrap;color:var(--heading)"></div>
     </div>
-    <!-- The thresholds that produced THIS run's cyan spans. Saved per run, so a
-         history re-run at different settings is visible here instead of quietly
-         making two runs' spans incomparable. -->
-    <div id="vadBar" style="display:none;margin-bottom:12px">
-      <div class="cap">Silero VAD thresholds used for this run
-        <span id="vadBarNote" class="note"></span></div>
-      <div class="well">
-        <div id="vadFields" style="display:flex;flex-wrap:wrap;gap:8px 16px"></div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap">
-          <button id="btnVad" class="mini">↻ re-run VAD on this run</button>
-          <button id="btnSeg" class="mini" title="cut each candidate's audio at its own
-            VAD spans, one STT request per turn — how production actually feeds the STT.
-            Speech the VAD missed is never transcribed, so WER reflects live behaviour.">✂ STT by VAD turns</button>
-          <span class="hint" style="margin:0;flex:1 1 260px">Same model and state machine a
-            livekit-agents pipeline runs. A live deployment cuts the call into turns with this and sends <b>one turn
-            per STT request</b> — the cyan spans are what each candidate leaves for
-            the recogniser. Re-running touches nothing but the spans.</span>
-        </div>
-      </div>
+    <div id="viewBar" title="zoom and scroll every waveform together; shift+scroll (or a sideways trackpad swipe) over a waveform pans too">
+      <label for="viewZoom">zoom</label>
+      <select id="viewZoom"></select>
+      <input type="range" id="viewPos" min="0" max="1000" value="0" step="1" disabled
+        aria-label="scroll the waveforms" />
+      <span id="viewLabel" class="meta">full view</span>
+      <button id="viewReset" class="mini">full view</button>
     </div>
     <div id="results"><div class="hint">No run selected. Record, upload, or pick one from history.</div></div>
+  </div>
+
+  <div class="box" id="vadBenchBox">
+    <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">VAD bench
+      <span id="vbRun" class="h2tools"></span></h2>
+    <div id="vbBody" class="hint">No run selected.</div>
   </div>
 
   <div class="box" id="rankBox">
     <h2>Rankings <span id="rankRun" class="h2tools">— within one run, never across runs</span></h2>
     <div id="rankings" class="hint">No run selected.</div>
+  </div>
+
+  <div class="box" id="vadRankBox">
+    <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">VAD rankings
+      <span class="h2tools" id="vrTools"></span></h2>
+    <div id="vadRankings" class="hint">No VAD bench results on this run.</div>
   </div>
 
   <div class="box" id="histBox">
@@ -561,10 +623,21 @@
 
 <nav class="rail">
   <button data-jump="resultsBox" title="Results">▤</button>
+  <button data-jump="vadBenchBox" title="VAD bench (and VAD-cut WER)">◎</button>
   <button data-jump="rankBox" title="Rankings">⇅</button>
   <button data-jump="histBox" title="History">⟲</button>
+  <!-- view controls: every waveform on the page at once -->
+  <div class="raildiv"></div>
+  <button class="rc" id="rcScale"><span class="ico">∿</span><span class="badge" id="rcScaleV"></span></button>
+  <button class="rc" id="rcHeight"><span class="ico">↕</span><span class="badge" id="rcHeightV"></span></button>
+  <button class="rc lyr" id="rcMarks" style="--lyr:var(--mark)"><span class="ico">▔</span></button>
+  <button class="rc lyr" id="rcCyan" style="--lyr:var(--vad)"><span class="ico">▁</span></button>
+  <button class="rc lyr" id="rcWhite" style="--lyr:#f2efe8"><span class="ico">▂</span></button>
+  <button class="rc" id="rcSnap"><span class="ico">⇤</span><span class="badge" id="rcSnapV"></span></button>
 </nav>
 </div>
+<!-- the hover popup over a cyan cut: what that one STT request heard -->
+<div id="cutTip" class="cuttip" hidden></div>
 
 <!-- NC_EXPORT_DATA -->
 <script>
@@ -592,9 +665,10 @@ const C = {
   paused: "#6f6c66",        // playhead, parked
   readout: "#f0ede6",
   caption: "#9c988f",
-  // cyan = the machine's opinion of where speech is. Was a 15%-alpha green that
-  // vanished under the waveform; now a wash PLUS a solid bar on the bottom edge,
-  // so the spans are legible even where the signal fills the canvas.
+  // cyan = the main VAD's opinion of where speech is (the VAD bench row picked as
+  // cyan). Was a 15%-alpha green that vanished under the waveform; now a wash PLUS
+  // a solid bar on the bottom edge, so the spans are legible even where the
+  // signal fills the canvas.
   // The bar carries the span; the wash and the edges only locate it. Weighted the
   // other way round the spans cover 70% of the canvas and the orange signal —
   // the thing actually being compared — reads as a detail inside a cyan block.
@@ -607,6 +681,14 @@ const C = {
   truth: "#a78bfa",
   truthDrag: "rgba(167,139,250,0.55)",
   truthWash: "rgba(167,139,250,0.13)",
+  // the compare VAD: a thin bone-white bar just above the cyan bar, so the two
+  // verdicts sit side by side
+  vbOverlay: "rgba(242,239,232,0.92)",
+  // the other two label classes in the marks ribbon: ignore (uncertain) hatched
+  // grey, known non-speech solid rose
+  ignoreFill: "rgba(179,174,164,0.18)",
+  ignoreHatch: "rgba(179,174,164,0.75)",
+  nonspeech: "#f43f5e",
 };
 // canvas has no CSS, so --mono is repeated here. Keep the two in sync.
 const MONO_CV = "ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -620,16 +702,33 @@ const state = {
   waveHeightSel: "1",     // "1"|"2"|"4"|"6"|"fit" — taller canvas = headroom
                           // before linear gain clips; see effMul()
   wavePeaks: {},          // canvasId -> {mins, maxs}, so rescaling never refetches
+  viewZoom: 1,            // waveform zoom, shared by every canvas; 1 = the whole call
+  viewStart: 0,           // left edge of the view, as a fraction of the call
   fitCache: null,         // memoised effMul() for "fit"; null = recompute
-  vadSpans: {},           // canvasId -> {segments, duration_s} drawn under the wave
-  vadShow: true,
-  runMeta: null,          // the loaded run, for "delta vs no-NC" on each card
-  werMode: "seg",         // which WER/transcript the cards show; seg = VAD-cut
-  werModeTouched: false,  // once the user picks, stop auto-defaulting per run
-  vadSnap: false,         // waveform clicks snap to the nearest VAD span edge
-  truth: [],              // hand-marked speech regions [[s,e],…] for this run
+  runMeta: null,          // the loaded run
+  // The two VAD markers, both VAD-bench rows. cyan = the main one (wash + bar,
+  // the card transcript, the hover popups, the NC rankings' agree/miss); white =
+  // a second one to compare against (bar only). Picked per run; the last pick
+  // is also remembered (prefs.pick) and used on any run that has that VAD.
+  cyanVid: "", whiteVid: "",
+  pick: {},               // runId -> {cyan, white} once picked by hand
+  cyanSpans: {},          // canvasId -> {segments, duration_s, row} for cyanVid
+  whiteSpans: {},         // the same for whiteVid
+  sttMode: "same",        // which VAD-cut transcript the cards + popups show
+  show: { marks: true, cyan: true, white: true },   // the rail's layer toggles
+  snap: "none",           // none | marks | cyan | white: what a click snaps to
+  truth: [],              // hand-marked speech [[s, e, id?], …]; no id = drawn just now
+  marks: [],              // the run's marks {id, start, end, ref, check?}
+  refDraft: {},           // mark id -> reference typed but not saved yet (null = expected empty)
+  refStash: {},           // mark id -> text set aside while ∅ is on, restored when it goes off
   marking: false,         // drag-to-mark mode on the input waveform
   drag: null,             // {cv, from, to} while a region is being dragged
+  vads: [],               // VAD registry from /api/vads
+  vbSort: { key: null, dir: 1 },  // comparison-table sort
+  vcModes: { same: true, raw: true },   // VAD-cut WER's read modes
+  sttConc: 4,             // VAD-cut STT pairs at once (from /api/vads)
+  vbBusy: false,          // a VAD-bench job is running on the loaded run
+  vbBaseline: "lk-inference|none",  // VAD rankings: Δ is against this pair
 };
 
 // ---------------------------------------------------------------- helpers
@@ -688,6 +787,7 @@ async function loadCandidates() {
   const div = $("candList");
   div.innerHTML = "";
   div.className = "";
+  const savedCands = loadPrefs().cands;   // the last ticks, else the defaults below
   const isCombo = (c) => (c.chain || []).length > 1;
   const singles = state.candidates.filter((c) => !isCombo(c));
   const combos = state.candidates.filter(isCombo);
@@ -705,11 +805,16 @@ async function loadCandidates() {
     const cb = document.createElement("input");
     cb.type = "checkbox"; cb.value = c.id;
     cb.dataset.liveOnly = c.live_only ? "1" : "";
-    cb.checked = c.available && (c.id === "none" || c.id === "hecttor-coda-vi");
+    cb.checked = c.available && (Array.isArray(savedCands) ? savedCands.includes(c.id)
+      : c.id === "none" || c.id === "hecttor-coda-vi");
     cb.disabled = !c.available;
     const span = document.createElement("span");
     span.textContent = c.label;
-    if (!c.available) {
+    if (c.historical) {
+      // kept only so old runs keep their labels: the model behind it is gone
+      lab.classList.add("historical");
+      span.innerHTML += ` <span class="why">— historical, kept for old runs; can't be re-run</span>`;
+    } else if (!c.available) {
       span.innerHTML += ` <span class="why">— unavailable: ${c.unavailable_reason}</span>`;
     }
     lab.append(cb, span);
@@ -744,8 +849,9 @@ $("btnAll").onclick = () => {
   const on = boxes.some((cb) => !cb.checked); // anything unticked ⇒ tick everything
   boxes.forEach((cb) => { cb.checked = on; });
   syncAllBtn();
+  savePrefs({ cands: tickedCandidates() });
 };
-$("candList").addEventListener("change", syncAllBtn);
+$("candList").addEventListener("change", () => { syncAllBtn(); savePrefs({ cands: tickedCandidates() }); });
 
 $("btnNote").onclick = async () => {
   if (!state.selectedRun) return;
@@ -762,177 +868,34 @@ $("btnNote").onclick = async () => {
   }
 };
 
-// --------------------------------------------------------------- vad panel
-// Seeded from .env (which should mirror the deployment being modelled) so the
-// page opens showing what a live cut would do; change a field and re-run to ask
-// what a different threshold would have done to an existing recording.
+// ---------------------------------------------------------- bench fields
+// The segmenter parameters a VAD-bench run takes (the livekit-agents state
+// machine), seeded from .env.
 const VAD_FIELDS = [
   ["activation_threshold", "activation", "p(speech) that starts a span"],
   ["deactivation_threshold", "deactivation", "p(speech) below which it can end"],
   ["min_speech_duration", "min speech (s)", "shorter blips are not a turn — the livekit-agents default is 0.12"],
   ["min_silence_duration", "min silence (s)", "pause that ends a turn — the livekit-agents default is 0.55"],
-  ["prefix_padding_duration", "prefix pad (s)", "back-dates a span's start"],
+  ["prefix_padding_duration", "prefix pad (s)", "back-dates a span's start; also the audio a VAD-cut STT request gets before each cut"],
 ];
-// The rate is an enum, not a range: silero has real weights for exactly 8 k and
-// 16 k (different window/context per rate), so this is a select, not a number
-// box that could be nudged to 12000.
-const RATE_WHY = "silero inference rate — 8 k matches a narrowband phone leg, "
-  + "16 k a wideband mic. Live deployments commonly pin 16 k for every source.";
-function rateLabel(hz) {
-  return hz === 8000 ? "8 kHz (narrowband)" : hz === 16000 ? "16 kHz (wideband)" : hz + " Hz";
-}
-function renderVadFields(values, limits) {
-  const ro = !!EX;  // an export has no server to re-run against
-  const fields = VAD_FIELDS.map(([k, label, why]) => {
-    const lim = (limits || {})[k] || [0, 1];
-    const v = values[k];
-    if (ro) {
-      return `<span class="vadfield" title="${esc(why)}">${label}
-        <b style="color:var(--heading)">${v ?? "—"}</b></span>`;
-    }
-    return `<span class="vadfield">
-      <label for="vad-${k}" title="${esc(why)}">${label}</label>
-      <input type="number" class="num" id="vad-${k}" value="${v ?? ""}" step="0.01"
-        min="${lim[0]}" max="${lim[1]}" title="${esc(why)} · allowed ${lim[0]}–${lim[1]}" />
-    </span>`;
-  });
-  const sr = values.sample_rate;
-  if (ro) {
-    fields.push(`<span class="vadfield" title="${esc(RATE_WHY)}">rate
-      <b style="color:var(--heading)">${sr ? rateLabel(sr) : "—"}</b></span>`);
-  } else {
-    const opts = (state.vadRates || [8000, 16000]).map((hz) =>
-      `<option value="${hz}"${+sr === hz ? " selected" : ""}>${rateLabel(hz)}</option>`).join("");
-    fields.push(`<span class="vadfield">
-      <label for="vad-sample_rate" title="${esc(RATE_WHY)}">rate</label>
-      <select id="vad-sample_rate" title="${esc(RATE_WHY)}">${opts}</select>
-    </span>`);
-  }
-  $("vadFields").innerHTML = fields.join("");
-}
 
-// Seeds the panel from the run's OWN saved thresholds, falling back to the .env
-// defaults for a run recorded before VAD existed. Flags a divergence from the
-// defaults so "why does this run look different" has a visible answer.
-// What this run SHOULD default to: .env thresholds, and the rate implied by the
-// run's own source — a phone leg defaults to 8 kHz even though the global default
-// is 16 kHz, so an unmeasured phone run must not be seeded with 16 k.
-function vadExpected(meta) {
-  const e = Object.assign({}, state.vadDefaults || {});
-  const bySource = (state.vadSourceRates || {})[(meta || {}).source];
-  if (bySource) e.sample_rate = bySource;
-  return e;
+// Per-viewer settings (scale, height, layers, snap, sidebar, the candidate and
+// VAD ticks, the VAD-bench panel's choices): a convenience, so every read and
+// write tolerates storage being unavailable. `extra` merges into what is stored,
+// so a save made before the tick lists exist never wipes them. Per origin:
+// localhost:8777 (a tunnel) and the host's LAN address keep separate copies.
+const PREFS_KEY = "ncbench.view";
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") || {}; } catch { return {}; }
 }
-
-function showVadBar(meta) {
-  const seg = $("btnSeg");
-  if (seg) { seg.disabled = false; seg.textContent = "✂ STT by VAD turns"; }
-  // meta.vad_params is authoritative, but every span set also records the
-  // thresholds that produced it — so a run measured before that key existed
-  // still shows its real settings instead of claiming it has none.
-  let saved = (meta && meta.vad_params) || vadParamsFromSpans(meta) || null;
-  if (saved) {
-    saved = Object.assign({}, saved);
-    // Measured before the rate was selectable. It was the plugin default then,
-    // and leaving it undefined would let the <select> fall to its first option
-    // and label a 16 kHz measurement as 8 kHz.
-    if (saved.sample_rate == null) saved.sample_rate = 16000;
-  }
-  const expected = vadExpected(meta);
-  $("vadBar").style.display = "";
-  renderVadFields(saved || expected, state.vadLimits);
-
-  const amber = (t) => `<span style="color:var(--fg-warning)">${t}</span>`;
-  const grey = (t) => `<span style="color:var(--body-subtle)">${t}</span>`;
-  const notes = [];
-  if (!saved) {
-    notes.push(amber("none saved yet; showing this source's defaults — re-run to measure"));
-  } else if (EX) {
-    // an export never fetches /api/config, so there is nothing to compare
-    // against; claiming "these are the defaults" would be a guess
-    notes.push(grey("as measured when this export was made"));
-  } else {
-    // The rate is called out separately because live deployments commonly pin
-    // 16 kHz for every source: anything else is a deliberate experiment.
-    // Both directions are worth saying — measured off this source's default is
-    // just as surprising as measured off the common default.
-    if (+saved.sample_rate !== 16000) {
-      notes.push(amber(`${+saved.sample_rate / 1000} kHz inference — live deployments
-        commonly pin 16 kHz, so these spans are an experiment, not a live cut`));
-    } else if (+expected.sample_rate !== 16000) {
-      notes.push(grey(`16 kHz (the common live setting) — this source defaults to
-        ${+expected.sample_rate / 1000} kHz; switch the rate and re-run to compare`));
-    }
-    const thresholdsDiffer = VAD_FIELDS.some(([k]) => +saved[k] !== +expected[k]);
-    if (thresholdsDiffer) {
-      notes.push(amber("thresholds differ from .env, so these spans are NOT comparable "
-        + "with a run measured at the defaults"));
-    }
-    if (!notes.length) notes.push(grey("the nc_bench defaults for this source (tighter "
-      + "than the livekit-agents defaults: min speech 0.05 / min silence 0.40 vs 0.12 / 0.55)"));
-  }
-  $("vadBarNote").innerHTML = "— " + notes.join(grey(" · "));
-}
-
-function vadParamsFromSpans(meta) {
-  if (!meta) return null;
-  const src = [meta.input_vad, ...(meta.candidates || []).map((c) => c.vad)];
-  for (const v of src) if (v && v.params) return v.params;
-  return null;
-}
-
-function vadParams() {
-  const p = {};
-  for (const [k] of VAD_FIELDS) {
-    const el = $("vad-" + k);
-    if (el) p[k] = parseFloat(el.value);
-  }
-  const sr = $("vad-sample_rate");
-  if (sr) p.sample_rate = parseInt(sr.value, 10);
-  return p;
-}
-$("werMode").onchange = () => {
-  state.werMode = $("werMode").value;
-  state.werModeTouched = true;
-  if (!state.runMeta) return;
-  for (const e of state.runMeta.candidates || []) renderCandidateCard(state.selectedRun, e);
-  renderRankings(state.selectedRun, state.runMeta);
-};
-
-$("btnSeg").onclick = async () => {
-  if (!state.selectedRun) return;
-  const btn = $("btnSeg");
-  btn.disabled = true; btn.textContent = "✂ transcribing…";
+function savePrefs(extra) {
   try {
-    const r = await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/stt_segmented`,
-                        { method: "POST" });
-    setStatus(`segmented STT on ${r.run_id}: ${r.candidates} candidates, turn by turn`);
-    // progress events repaint each card; run_done reloads the run
-  } catch (e) {
-    setStatus("segmented STT failed: " + e.message, true);
-    btn.disabled = false; btn.textContent = "✂ STT by VAD turns";
-  }
-};
-
-$("btnVad").onclick = async () => {
-  const btn = $("btnVad");
-  if (!state.selectedRun) { setStatus("load a run first", true); return; }
-  btn.disabled = true; btn.textContent = "↻ re-running…";
-  try {
-    const r = await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/vad`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ params: vadParams() }),
-    });
-    setStatus(`VAD re-run on ${r.run_id}: ${r.files} files` +
-      (r.failed ? ` · ${r.failed} failed` : ""));
-    loadRun(state.selectedRun);   // repaints every span from the stored result
-  } catch (e) {
-    setStatus("VAD re-run failed: " + e.message, true);
-  } finally {
-    btn.disabled = false; btn.textContent = "↻ re-run VAD on this run";
-  }
-};
+    localStorage.setItem(PREFS_KEY, JSON.stringify(Object.assign(loadPrefs(), {
+      waveScale: state.waveScale, waveHeightSel: state.waveHeightSel, show: state.show,
+      snap: state.snap, sttMode: state.sttMode, side: $("side") ? $("side").classList.contains("collapsed") : false,
+    }, extra || {})));
+  } catch { /* private window, blocked storage: the defaults stand */ }
+}
 
 // ---------------------------------------------------------------- timeline
 const tl = $("timeline"), tctx = tl.getContext("2d");
@@ -1128,16 +1091,16 @@ function handleEvent(ev) {
     const el = $("prog-" + ev.candidate);
     if (el) {
       if (ev.stage === "nc") el.innerHTML = '<span class="spin">◐</span> running NC…';
+      // cloud candidates on a stored wav: the replay runs first, in real time
+      if (ev.stage === "cloud_replay") {
+        el.innerHTML = '<span class="spin">◐</span> cloud replay… ' + esc(ev.detail || "");
+      }
       if (ev.stage === "stt") el.innerHTML = '<span class="spin">◐</span> transcribing…';
     }
     if (ev.entry) renderCandidateCard(ev.run_id, ev.entry);
     return;
   }
-  if (ev.type === "vad") {
-    if (ev.finished) setStatus(`VAD re-run done on ${ev.run_id} — ${ev.files} files`);
-    else setStatus(`re-running VAD on ${ev.run_id}… ${ev.done}/${ev.total} files`);
-    return;
-  }
+  if (ev.type === "vad_bench") { vadBenchEvent(ev); return; }
   if (ev.type === "export") {
     if (ev.finished) {
       $("btnExport").disabled = false;
@@ -1202,7 +1165,9 @@ $("btnReproc").onclick = async () => {
   btn.disabled = true; btn.textContent = "↻ running…";
   try {
     setPhase("processing", "reprocessing");
-    prepareResultsSkeleton(state.selectedRun, usable);
+    // the server MERGES by candidate id, so the other cards stay as they are:
+    // only the re-run ones are marked, in place (new ones are appended)
+    markRerunning(usable);
     await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/reprocess`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1237,8 +1202,6 @@ $("btnStart").onclick = async () => {
       const fd = new FormData();
       fd.append("file", f);
       fd.append("candidates", JSON.stringify(cands));
-      fd.append("script", $("script").value);
-      fd.append("note", $("note").value);
       fd.append("concurrency", $("conc").value);
       const res = await api("/api/upload", { method: "POST", body: fd });
       $("resRun").textContent = "— " + res.run_id;
@@ -1247,9 +1210,7 @@ $("btnStart").onclick = async () => {
     const res = await api("/api/session/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, candidates: cands,
-        script: $("script").value, note: $("note").value,
-        concurrency: +$("conc").value }),
+      body: JSON.stringify({ source, candidates: cands, concurrency: +$("conc").value }),
     });
     if (source === "web") {
       setPhase("armed", "joining room…");
@@ -1319,6 +1280,30 @@ async function joinWebRoom(join) {
 }
 
 // ---------------------------------------------------------------- results
+// Reprocess: keep every card, mark only the re-run ones. The stored result
+// stays visible until its replacement arrives — and stays for good if the
+// re-run fails (the server keeps it, with a last_attempt note).
+function markRerunning(candIds) {
+  for (const cid of candIds) {
+    let prog = $("prog-" + cid);
+    if (!prog) {
+      const card = $("card-" + cid) || document.createElement("div");
+      if (!card.id) {
+        const c = state.candidates.find((x) => x.id === cid);
+        card.className = "cand-card";
+        card.id = "card-" + cid;
+        card.innerHTML = `<div class="head"><span class="name">${c ? esc(c.label) : esc(cid)}</span></div>`;
+        $("results").appendChild(card);
+      }
+      prog = document.createElement("span");
+      prog.className = "meta";
+      prog.id = "prog-" + cid;
+      (card.querySelector(".head") || card).appendChild(prog);
+    }
+    prog.innerHTML = '<span class="spin">◐</span> re-run queued';
+  }
+}
+
 function prepareResultsSkeleton(runId, candIds) {
   const div = $("results");
   div.innerHTML = "";
@@ -1362,34 +1347,26 @@ function renderCandidateCard(runId, e) {
     card.id = "card-" + e.id;
     $("results").appendChild(card);
   }
-  const fileUrl = (n) => runFile(runId, n);
+  // a re-run replaces <cid>.wav under the same name: version the URL by the
+  // record, or the browser may keep playing (and drawing) the old file
+  const fileUrl = (n) => runFile(runId, n) +
+    (!EX && e.processed_at ? "?v=" + encodeURIComponent(e.processed_at) : "");
   let html = `<div class="head"><span class="name">${e.label}</span>`;
   if (e.status === "done") {
     html += `<span class="meta">chain: ${(e.chain || []).join(" → ") || "passthrough"}</span>
              <span class="meta">${e.proc_ms} ms · RTF ${e.rtf}</span>`;
   }
   html += `</div>`;
+  if (e.last_attempt) {
+    // a re-run failed and the server kept the earlier result: say so, so the
+    // card is never read as the latest attempt's output
+    html += `<div class="err">⚠ re-run ${esc(e.last_attempt.at || "")} failed: ` +
+      `${esc(e.last_attempt.error || "")} — showing the earlier result</div>`;
+  }
   if (e.status === "error") {
     html += `<div class="err">✗ ${e.error}</div>`;
   } else {
-    // the toggle picks which measurement is DISPLAYED; a candidate without
-    // segmented results falls back to whole-file rather than going blank
-    const useSeg = state.werMode === "seg" && !!e.stt_seg;
-    const st = useSeg ? e.stt_seg : e.stt;
-    if (st) {
-      const t = st.text || "";
-      const seg = useSeg
-        ? ` · <span style="color:var(--vad-strong)">✂ ${st.turns} turn${st.turns === 1 ? "" : "s"} (VAD-cut)</span>` : "";
-      html += `<div class="stt ${useSeg ? "seg " : ""}${t ? "" : "empty"}">${t || "(empty transcript)"}</div>
-        <div class="meta">lang: ${st.language ?? "—"} · confidence: ${st.confidence ?? "—"}${seg}
-        ${e.output && !useSeg ? sttBtn(e.id) : ""}</div>`;
-    } else if (state.werMode === "seg" && e.stt_seg_error) {
-      html += `<div class="err">segmented STT failed: ${e.stt_seg_error}</div>`;
-    } else if (e.stt_error) {
-      html += `<div class="err">STT failed: ${e.stt_error} ${e.output ? sttBtn(e.id) : ""}</div>`;
-    } else if (e.output) {
-      html += `<div class="meta">no transcript ${sttBtn(e.id)}</div>`;
-    }
+    html += `<div id="tx-${e.id}">${transcriptBlock(e)}</div>`;
     if (e.scores) {
       const s = e.scores, d = s.dnsmos || {};
       const bits = [];
@@ -1397,8 +1374,7 @@ function renderCandidateCard(runId, e) {
       bits.push(s.noise_reduction_db != null
         ? `<b>noise in gaps</b> ${s.noise_reduction_db >= 0 ? "−" : "+"}${Math.abs(s.noise_reduction_db)} dB`
         : `gap-RMS n/a (no confident speech gaps)`);
-      const wsel = useSeg ? s.wer_seg : s.wer;
-      if (wsel) bits.push(`<b>WER${useSeg ? " ✂" : ""}</b> ${(wsel.wer * 100).toFixed(1)}% (${wsel.errors}/${wsel.ref_words} words)`);
+      if (s.wer) bits.push(`<b>WER whole-file</b> ${(s.wer.wer * 100).toFixed(1)}% (${s.wer.errors}/${s.wer.ref_words} words)`);
       if (s.bandwidth_hz != null) bits.push(`<b>band</b> ${(s.bandwidth_hz / 1000).toFixed(1)} kHz`);
       html += `<div class="meta" style="margin-top:6px">${bits.join(" &nbsp;|&nbsp; ")}</div>`;
     } else if (e.scores_error) {
@@ -1408,23 +1384,42 @@ function renderCandidateCard(runId, e) {
       html += `<div class="meta">latency: init ${e.latency.init_ms} ms · per-20ms-block p95 ${e.latency.block_ms_p95} ms · algo delay ${e.latency.algo_delay_ms} ms</div>`;
     }
     html += costLine(e.cost);
-    html += vadLine(e.vad, e.vad_error, baseVad());
-    html += truthLine(e.truth_score);
+    html += `<div id="vi-${e.id}">${vadInfoLine(e.id)}</div>`;
     if (e.output) {
       html += `<canvas class="wave" width="1600" height="128" id="wave-${e.id}"></canvas>
         <audio controls preload="metadata" src="${fileUrl(e.output)}"></audio>
-        <div class="dl"><a href="${fileUrl(e.output)}" download="${runId}-${e.id}.wav">⬇ download ${e.output}</a>${
-          useSeg && e.output_seg
-            ? ` · <a href="${fileUrl(e.output_seg)}" download="${runId}-${e.id}-vadcut.wav"
-                 title="the turns concatenated — exactly the audio the STT transcribed">⬇ vad-cut audio</a>` : ""
-        }</div>`;
+        <div class="dl"><a href="${fileUrl(e.output)}" download="${runId}-${e.id}.wav">⬇ download ${e.output}</a></div>`;
     }
   }
   card.innerHTML = html;
-  if (e.output) {
-    state.vadSpans["wave-" + e.id] = e.vad || null;
-    drawWave(fileUrl(e.output), "wave-" + e.id, peakKey(runId, e.output));
+  if (e.output) drawWave(fileUrl(e.output), "wave-" + e.id, peakKey(runId, e.output));
+}
+
+// The card's transcript: the cyan VAD's cuts joined (what production's STT would
+// have been sent, one request per cut) when that pair has been through VAD-cut
+// WER, else the whole-file transcript. Always labelled with which it is.
+function transcriptBlock(e) {
+  const v = cyanCut(e.id);
+  if (v) {
+    const t = v.text || "";
+    const w = v.wer ? ` · <b>WER ✂</b> ${(v.wer.wer * 100).toFixed(1)}% (${v.wer.errors}/${v.wer.ref_words} words)` : "";
+    const none = v.turns ? `(the STT returned nothing for ${v.turns === 1 ? "the one cut" : `any of the ${v.turns} cuts`})`
+      : "(the VAD opened no cut to send)";
+    return `<div class="stt seg ${t ? "" : "empty"}">${esc(t) || none}</div>
+      <div class="meta"><span style="color:var(--vad-strong)">✂ VAD-cut · ${esc(state.cyanVid)} · ${
+        state.sttMode === "raw" ? "STT on raw (none)" : "STT on this audio"} · ${v.turns} cut${
+        v.turns === 1 ? "" : "s"}</span>${w} · hover the cyan to read one cut</div>`;
   }
+  const st = e.stt;
+  if (st) {
+    const t = st.text || "";
+    return `<div class="stt ${t ? "" : "empty"}">${esc(t) || "(empty transcript)"}</div>
+      <div class="meta">whole-file transcript · lang: ${st.language ?? "—"} · confidence: ${st.confidence ?? "—"}
+      ${e.output ? sttBtn(e.id) : ""}</div>`;
+  }
+  if (e.stt_error) return `<div class="err">STT failed: ${e.stt_error} ${e.output ? sttBtn(e.id) : ""}</div>`;
+  if (e.output) return `<div class="meta">no transcript ${sttBtn(e.id)}</div>`;
+  return "";
 }
 
 // What the chain costs to RUN, which is not what `rtf` measures. rtf is wall
@@ -1444,33 +1439,6 @@ function costLine(c) {
   // model loading at the same moment would land in this one's number
   if (c.model_rss_mb != null) bits.push(`<b>model</b> ${c.model_rss_mb} MB`);
   return bits.length ? `<div class="meta">cost: ${bits.join(" · ")}</div>` : "";
-}
-
-// The raw leg's spans, when the run is loaded from history. Progress events carry
-// one entry at a time and no run meta, so live rendering simply shows no delta
-// rather than comparing against a stale baseline.
-function baseVad() {
-  const c = ((state.runMeta || {}).candidates || []).find((x) => x.id === "none");
-  return (c && c.vad) || (state.runMeta || {}).input_vad || null;
-}
-
-// Reads as "what a live turn segmentation did to this audio". Spans and
-// total speech are the two numbers that matter: fewer spans means turns were
-// merged or lost, less speech means onsets/tails were shaved.
-function vadLine(v, err, base) {
-  if (err) return `<div class="err">VAD failed: ${esc(err)}</div>`;
-  if (!v) return "";
-  if (v.error) return `<div class="err">VAD failed: ${esc(v.error)}</div>`;
-  let d = "";
-  if (base && base !== v && base.duration_s) {
-    const ds = v.speech_s - base.speech_s, dn = v.n - base.n;
-    const col = Math.abs(ds) < 0.05 && dn === 0 ? "var(--body-subtle)"
-      : ds < 0 ? "var(--danger-strong)" : "var(--success-strong)";
-    d = ` <span style="color:${col}">· Δ vs no-NC ${ds >= 0 ? "+" : "−"}${Math.abs(ds).toFixed(2)} s,
-          ${dn >= 0 ? "+" : "−"}${Math.abs(dn)} span${Math.abs(dn) === 1 ? "" : "s"}</span>`;
-  }
-  return `<div class="meta"><b>VAD</b> ${v.n} span${v.n === 1 ? "" : "s"} ·
-    ${v.speech_s.toFixed(2)} s speech (${(v.coverage * 100).toFixed(0)}% of the file)${d}</div>`;
 }
 
 // The container rate lies: LiveKit hands every track over at 48 kHz, so an
@@ -1510,7 +1478,7 @@ function renderInputCard(runId, meta) {
       <span class="meta">${meta.input.duration_s}s · ${meta.input.sample_rate} Hz
       ${meta.input.original_name ? " · " + meta.input.original_name : ""}</span></div>
     ${inScores}
-    ${vadLine(meta.input_vad, null, null)}
+    <div id="vi-input">${vadInfoLine("input")}</div>
     <canvas class="wave" width="1600" height="128" id="wave-input"></canvas>
     <!-- the raw leg is the only place a human reference can be drawn: it is the
          one signal no candidate has touched -->
@@ -1518,16 +1486,56 @@ function renderInputCard(runId, meta) {
     <audio controls preload="metadata" src="${url}"></audio>
     <div class="dl"><a href="${url}" download="${runId}-input.wav">⬇ download input.wav</a></div>`;
   div.prepend(card);
-  state.vadSpans["wave-input"] = meta.input_vad || null;
   renderMarkBar();
   drawWave(url, "wave-input", peakKey(runId, meta.input.file));
 }
 
+// ----------------------------------------------------------- zoom / scroll
+// Every waveform shows the same window [viewStart, viewStart + 1/viewZoom] of the
+// call, so the cards stay lined up for comparison. Peaks are computed at
+// PEAK_RES columns per canvas pixel, which keeps the top zoom as sharp as full
+// view; an export only carries canvas-width peaks, so zoom there just stretches.
+const PEAK_RES = 32;
+const VIEW_ZOOMS = [1, 2, 4, 8, 16, 32];
+const viewSpan = () => 1 / state.viewZoom;
+// a fraction of the call -> canvas x in the current view (may fall outside [0, W])
+const tx = (frac, W) => ((frac - state.viewStart) / viewSpan()) * W;
+// a fraction of the canvas's width -> a fraction of the call
+const fromView = (f) => state.viewStart + f * viewSpan();
+
+function setView(zoom, start) {
+  const z = Math.max(1, Math.min(VIEW_ZOOMS[VIEW_ZOOMS.length - 1], zoom));
+  state.viewZoom = z;
+  state.viewStart = Math.max(0, Math.min(1 - 1 / z, start));
+  renderViewBar();
+  repaintAllWaves();
+}
+function renderViewBar() {
+  const z = state.viewZoom, pos = $("viewPos");
+  $("viewZoom").value = String(z);
+  pos.disabled = z === 1;
+  const room = 1 - 1 / z;
+  pos.value = room > 0 ? Math.round((state.viewStart / room) * 1000) : 0;
+  const dur = truthDur();
+  $("viewLabel").textContent = z === 1 ? "full view" : dur
+    ? `${(state.viewStart * dur).toFixed(2)}–${((state.viewStart + 1 / z) * dur).toFixed(2)} s of ${dur.toFixed(1)} s`
+    : `${z}x`;
+}
+
 // Peaks are cached per canvas so changing the scale repaints instantly instead of
-// re-fetching and re-decoding 35 wavs.
+// re-fetching and re-decoding 35 wavs — and per audio URL, so re-rendering a run
+// after a save (references, marks) does not decode them all again. The URL
+// carries the record's processed_at, so a re-processed file is a new key.
+const peakCache = new Map();
 async function drawWave(url, canvasId, pkey) {
   try {
     const cv = $(canvasId); if (!cv) return;
+    if (!EX && peakCache.has(url)) {
+      state.wavePeaks[canvasId] = peakCache.get(url);
+      state.fitCache = null;
+      paintWave(canvasId);
+      return;
+    }
     if (EX) {
       // a file:// page cannot fetch() its own wav, so the peaks were computed
       // server-side at export time from the original PCM
@@ -1542,17 +1550,22 @@ async function drawWave(url, canvasId, pkey) {
     const actx = new (window.AudioContext || window.webkitAudioContext)();
     const audio = await actx.decodeAudioData(buf);
     const data = audio.getChannelData(0);
-    const W = cv.width, step = Math.ceil(data.length / W);
+    // PEAK_RES columns per canvas pixel, so a zoomed view still has real detail
+    const W = cv.width * PEAK_RES, step = data.length / W;
     const mins = new Float32Array(W), maxs = new Float32Array(W);
     for (let x = 0; x < W; x++) {
       let min = 1, max = -1;
-      for (let i = x * step; i < (x + 1) * step && i < data.length; i++) {
+      // integer bounds: step is fractional, and a column narrower than a sample
+      // still reads the sample it sits on
+      const a = Math.floor(x * step), b = Math.min(data.length, Math.max(a + 1, Math.floor((x + 1) * step)));
+      for (let i = a; i < b; i++) {
         if (data[i] < min) min = data[i];
         if (data[i] > max) max = data[i];
       }
       mins[x] = min; maxs[x] = max;
     }
     state.wavePeaks[canvasId] = { mins, maxs };
+    peakCache.set(url, state.wavePeaks[canvasId]);
     state.fitCache = null;  // a new peak set can change the fit height
     actx.close();
     paintWave(canvasId);
@@ -1594,14 +1607,23 @@ function paintWave(canvasId) {
   const grad = waveGrad(ctx, H);
   ctx.fillStyle = C.axis; ctx.fillRect(0, mid, W, 1);
   let clipped = 0;
+  // the view's slice of the peak columns, min/max-pooled to one per pixel
+  const N = peaks.maxs.length, k = (N * viewSpan()) / W, c0 = state.viewStart * N;
   for (let x = 0; x < W; x++) {
+    const a = Math.min(N - 1, Math.floor(c0 + x * k));
+    const b = Math.min(N, Math.max(a + 1, Math.floor(c0 + (x + 1) * k)));
+    let lo = 1, hi = -1;
+    for (let i = a; i < b; i++) {
+      if (peaks.mins[i] < lo) lo = peaks.mins[i];
+      if (peaks.maxs[i] > hi) hi = peaks.maxs[i];
+    }
+    if (hi < lo) { lo = hi = 0; }
     let up, dn;
     if (db) {
-      up = dn = waveGainPx(Math.max(Math.abs(peaks.mins[x]), Math.abs(peaks.maxs[x])),
-                           REF_HALF_WAVE, mul) * 2;
+      up = dn = waveGainPx(Math.max(Math.abs(lo), Math.abs(hi)), REF_HALF_WAVE, mul) * 2;
     } else {
-      up = waveGainPx(peaks.maxs[x], REF_HALF_WAVE, mul) * 2;
-      dn = waveGainPx(peaks.mins[x], REF_HALF_WAVE, mul) * 2;
+      up = waveGainPx(hi, REF_HALF_WAVE, mul) * 2;
+      dn = waveGainPx(lo, REF_HALF_WAVE, mul) * 2;
     }
     const over = up > mid || dn > mid;
     if (over) clipped++;
@@ -1622,8 +1644,9 @@ function paintWave(canvasId) {
 
   // playhead, so the audible part of the waveform is identifiable
   const audio = waveAudio(cv);
-  if (audio && audio.duration > 0 && isFinite(audio.duration) && audio.currentTime > 0) {
-    const x = (audio.currentTime / audio.duration) * W;
+  if (audio && audio.duration > 0 && isFinite(audio.duration) && audio.currentTime > 0
+      && tx(audio.currentTime / audio.duration, W) >= 0 && tx(audio.currentTime / audio.duration, W) <= W) {
+    const x = tx(audio.currentTime / audio.duration, W);
     // white and lit while it moves, grey and flat when parked — so "is this
     // playing" is answerable from the picture alone
     ctx.save();
@@ -1634,13 +1657,13 @@ function paintWave(canvasId) {
   }
 }
 
-// Silero VAD spans, drawn UNDER the waveform so the audio stays readable — these
-// are the turns a live deployment would cut and send to STT one at a time, which is why
-// a chain that shaves an onset costs a word before the recogniser ever runs.
+// The cyan VAD's spans, drawn UNDER the waveform so the audio stays readable —
+// the turns a live deployment would cut and send to STT one at a time, which is
+// why a chain that shaves an onset costs a word before the recogniser ever runs.
 // Positioned from the span's own duration_s, never from the <audio> element:
 // metadata may not have loaded, and in an export there is no decodable source.
 function paintVad(ctx, canvasId, W, H) {
-  vadSpanRects(canvasId, W, (x0, x1) => {
+  spanRects(state.show.cyan && state.cyanSpans[canvasId], W, (x0, x1) => {
     ctx.fillStyle = C.vadFill;
     ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
     // edges, so two spans separated by a short pause don't read as one
@@ -1650,39 +1673,127 @@ function paintVad(ctx, canvasId, W, H) {
   });
 }
 
-// Shared by the wash (under the signal) and the bar (over it), so the two can
+// Shared by the wash (under the signal) and the bars (over it), so the two can
 // never drift apart by a pixel and read as two different measurements.
-function vadSpanRects(canvasId, W, fn) {
-  if (!state.vadShow) return;
-  const v = state.vadSpans[canvasId];
+function spanRects(v, W, fn) {
   if (!v || !v.duration_s || !(v.segments || []).length) return;
   for (const [s, e] of v.segments) {
-    const x0 = Math.max(0, (s / v.duration_s) * W);
-    const x1 = Math.min(W, (e / v.duration_s) * W);
+    const x0 = Math.max(0, tx(s / v.duration_s, W));
+    const x1 = Math.min(W, tx(e / v.duration_s, W));
     if (x1 > x0) fn(x0, x1);
   }
 }
 
-// The two verdicts, as two solid bars on opposite edges: violet on top is what a
-// human marked, cyan along the bottom is what the VAD decided. Cyan with no
-// violet over it is a turn the model invented; violet with no cyan under it is
-// speech that never reached the recogniser.
-// Returns the bar height so the caption can sit clear of it.
+// The verdicts as solid bars on opposite edges: violet on top is what a human
+// marked, cyan along the bottom is what the main VAD decided, and the thin
+// bone-white bar just above it is the compare VAD. Cyan with no violet over it is
+// a turn the model invented; violet with no cyan under it is speech that never
+// reached the recogniser. Returns the bar height so the caption can sit clear of it.
 function paintRibbons(ctx, canvasId, W, H) {
   const bar = Math.max(3, Math.round(H * 0.075));
-  vadSpanRects(canvasId, W, (x0, x1) => {
+  spanRects(state.show.cyan && state.cyanSpans[canvasId], W, (x0, x1) => {
     ctx.fillStyle = C.vadBar;
     ctx.fillRect(x0, H - bar, Math.max(1, x1 - x0), bar);
   });
+  const h = Math.max(2, Math.round(bar * 0.75)), y = H - bar - h - 2;
+  spanRects(state.show.white && state.whiteSpans[canvasId], W, (x0, x1) => {
+    ctx.fillStyle = C.vbOverlay;
+    ctx.fillRect(x0, y, Math.max(1, x1 - x0), h);
+  });
   const dur = truthDur();
-  if (dur) {
+  if (dur && (state.show.marks || state.marking)) {
     ctx.fillStyle = C.truth;
     for (const [s, e] of state.truth) {
-      const x0 = Math.max(0, (s / dur) * W), x1 = Math.min(W, (e / dur) * W);
+      const x0 = Math.max(0, tx(s / dur, W)), x1 = Math.min(W, tx(e / dur, W));
       if (x1 > x0) ctx.fillRect(x0, 0, Math.max(1, x1 - x0), bar);
     }
+    paintOtherLabels(ctx, W, bar, dur);
   }
   return bar;
+}
+
+// The two other label classes, read-only, in the same top ribbon as the violet
+// speech marks: IGNORE spans (true label uncertain) hatched grey, KNOWN
+// NON-SPEECH (a click, a clunk) solid rose. Hover a waveform to see the names
+// in the status line. Set through POST /api/runs/<id>/truth; not drawable here.
+function paintOtherLabels(ctx, W, bar, dur) {
+  for (const [s, e] of state.ignoreSpans || []) {
+    const x0 = Math.max(0, tx(s / dur, W)), x1 = Math.min(W, tx(e / dur, W));
+    if (x1 <= x0) continue;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0, 0, x1 - x0, bar); ctx.clip();
+    ctx.fillStyle = C.ignoreFill; ctx.fillRect(x0, 0, x1 - x0, bar);
+    ctx.strokeStyle = C.ignoreHatch; ctx.lineWidth = 2;
+    for (let x = x0 - bar; x < x1 + bar; x += 6) {
+      ctx.beginPath(); ctx.moveTo(x, bar); ctx.lineTo(x + bar, 0); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.fillStyle = C.nonspeech;
+  for (const w of state.knownNonspeech || []) {
+    const x0 = Math.max(0, tx(w.start / dur, W)), x1 = Math.min(W, tx(w.end / dur, W));
+    if (x1 > x0) ctx.fillRect(x0, 0, Math.max(2, x1 - x0), bar);
+  }
+}
+document.addEventListener("mousemove", (ev) => {
+  const cv = ev.target.closest && ev.target.closest("canvas.wave");
+  if (!cv || state.drag || !((state.knownNonspeech || []).length || (state.ignoreSpans || []).length)) return;
+  const dur = truthDur(); if (!dur) return;
+  const r = cv.getBoundingClientRect(), t = fromView((ev.clientX - r.left) / r.width) * dur;
+  const ns = (state.knownNonspeech || []).find((w) => t >= w.start && t <= w.end);
+  const ig = (state.ignoreSpans || []).find(([s, e]) => t >= s && t <= e);
+  if (ns) setStatus(`known non-speech "${ns.name}" ${ns.start.toFixed(2)}–${ns.end.toFixed(2)} s`);
+  else if (ig) setStatus(`ignore span ${ig[0].toFixed(2)}–${ig[1].toFixed(2)} s (label uncertain; scored as neither)`);
+});
+
+// Hovering a cyan-highlighted stretch shows what that one STT request heard:
+// the cut it belongs to (a cut can hold several VAD segments the prefix pad
+// fused), in the transcript mode the cards show, next to the references of the
+// purple marks it overlaps.
+const tip = $("cutTip");
+function hideTip() { if (!tip.hidden) tip.hidden = true; }
+document.addEventListener("mousemove", (ev) => {
+  const cv = ev.target.closest && ev.target.closest("canvas.wave");
+  if (!cv || state.drag || state.marking || !state.show.cyan) { hideTip(); return; }
+  const v = state.cyanSpans[cv.id];
+  if (!v || !v.duration_s) { hideTip(); return; }
+  const r = cv.getBoundingClientRect();
+  const t = fromView((ev.clientX - r.left) / r.width) * v.duration_s;
+  const seg = (v.segments || []).find(([a, b]) => t >= a && t <= b);
+  if (!seg) { hideTip(); return; }
+  tip.innerHTML = cutTipHtml(v, seg, cv.id === "wave-input" ? "input" : cv.id.slice(5));
+  tip.hidden = false;
+  // beside the pointer, flipped so it never leaves the window
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  const x = ev.clientX + 14 + w > innerWidth ? ev.clientX - 14 - w : ev.clientX + 14;
+  const y = ev.clientY + 14 + h > innerHeight ? ev.clientY - 10 - h : ev.clientY + 14;
+  tip.style.left = Math.max(4, x) + "px"; tip.style.top = Math.max(4, y) + "px";
+});
+document.addEventListener("scroll", hideTip, true);
+
+function cutTipHtml(v, seg, sid) {
+  const s = vbSttRec(v.row, state.sttMode);
+  const head = (a, b, extra) => `<div class="h">${esc(state.cyanVid)} · ${esc(vbSrcLabel(sid))} · `
+    + `${a.toFixed(2)}–${b.toFixed(2)} s${extra || ""}</div>`;
+  if (!s || !s.cuts) {
+    const why = !s ? `no VAD-cut transcript for this pair in ${state.sttMode} mode yet: run ✂ VAD-cut WER`
+      : "transcribed before cuts were stored: run ✂ VAD-cut WER again to read cut by cut";
+    return head(seg[0], seg[1]) + `<div class="n">${esc(why)}</div>`;
+  }
+  const i = s.cuts.findIndex((c) => seg[0] >= c.span[0] - 1e-6 && seg[1] <= c.span[1] + 1e-6);
+  if (i < 0) return head(seg[0], seg[1]) + `<div class="n">this segment was too short to send (under 20 ms)</div>`;
+  const c = s.cuts[i];
+  const fused = c.segments > 1 ? ` · ${c.segments} VAD segments fused by the ${
+    (v.row.params?.prefix_padding_duration ?? 0.5)} s pad` : "";
+  const ignored = (state.ignoreSpans || []).some(([a, b]) => a <= c.span[0] && c.span[1] <= b);
+  const refs = state.marks.filter((m) => m.start < c.end && m.end > c.start);
+  return head(c.start, c.end, ` · cut ${i + 1}/${s.cuts.length}${fused}`)
+    + `<div class="t${c.text ? "" : " empty"}">${c.text ? esc(c.text) : "(the STT returned nothing for this cut)"}</div>`
+    + (ignored ? `<div class="n">inside an ignore span: not scored</div>` : "")
+    + refs.map((m) => `<div class="r">ref ${m.start.toFixed(2)}–${m.end.toFixed(2)} s: ${
+        refVal(m) === null ? "∅ " + EMPTY_REF : esc(refText(m)) || "(no reference yet)"}</div>`).join("")
+    + `<div class="n">${state.sttMode === "raw" ? "STT on raw (none), cut where this VAD ran"
+      : "STT on the audio this VAD ran on"}${c.confidence != null ? " · confidence " + c.confidence : ""}</div>`;
 }
 
 // The region being dragged right now, on the canvas being dragged only. The
@@ -1695,7 +1806,7 @@ function paintTruth(ctx, canvasId, W, H) {
   const bar = Math.max(3, Math.round(H * 0.075));
   const a = Math.min(state.drag.from, state.drag.to) * dur;
   const b = Math.max(state.drag.from, state.drag.to) * dur;
-  const x0 = Math.max(0, (a / dur) * W), x1 = Math.min(W, (b / dur) * W);
+  const x0 = Math.max(0, tx(a / dur, W)), x1 = Math.min(W, tx(b / dur, W));
   if (x1 <= x0) return;
   ctx.fillStyle = C.truthWash;
   ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
@@ -1756,24 +1867,23 @@ document.addEventListener("click", (ev) => {
   const audio = waveAudio(cv);
   if (!audio) return;
   const r = cv.getBoundingClientRect();
-  let frac = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
-  // snap: land exactly on the nearest VAD edge of THIS candidate's spans, so
-  // "did the VAD open late / close early" is answerable by ear
-  if (state.vadSnap) {
-    const v = state.vadSpans[cv.id];
-    if (v && v.duration_s && (v.segments || []).length) {
-      const t = frac * v.duration_s;
-      let best = null, bd = Infinity;
-      for (const [a, b] of v.segments) {
-        for (const [edge, kind] of [[a, "start"], [b, "end"]]) {
-          const d = Math.abs(edge - t);
-          if (d < bd) { bd = d; best = [edge, kind]; }
-        }
+  let frac = fromView(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
+  // snap: land exactly on the nearest edge of the chosen layer — THIS card's
+  // cyan or white spans, or the purple marks — so "did the VAD open late / close
+  // early" is answerable by ear
+  const v = snapSpans(cv.id);
+  if (v && v.duration_s && (v.segments || []).length) {
+    const t = frac * v.duration_s;
+    let best = null, bd = Infinity;
+    for (const [a, b] of v.segments) {
+      for (const [edge, kind] of [[a, "start"], [b, "end"]]) {
+        const d = Math.abs(edge - t);
+        if (d < bd) { bd = d; best = [edge, kind]; }
       }
-      if (best) {
-        frac = best[0] / v.duration_s;
-        setStatus(`snapped to VAD ${best[1]} @ ${best[0].toFixed(2)}s`);
-      }
+    }
+    if (best) {
+      frac = best[0] / v.duration_s;
+      setStatus(`snapped to the ${SNAP_LABEL[state.snap]} ${best[1]} @ ${best[0].toFixed(2)}s`);
     }
   }
   seekAndPlay(audio, frac);
@@ -1784,40 +1894,70 @@ document.addEventListener("click", (ev) => {
 // document because #wave-input is rebuilt on every loadRun, and mousemove/up go
 // on document too so a drag that leaves the canvas still finishes cleanly
 // instead of leaving a half-painted region stuck to the cursor.
+// a fraction of the CALL, not of the canvas: marks are stored in call time, and
+// a zoomed canvas shows only part of it
 const fracOf = (cv, ev) => {
   const r = cv.getBoundingClientRect();
-  return Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+  return fromView(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
 };
 
+// A press that moves under DRAG_PX is a click, not a region. Measured in pixels,
+// not seconds: on a long call at full view one pixel is already far more than
+// a 20 ms mis-click, so a hand wobble used to paint a sliver of new region.
+const DRAG_PX = 4;
 document.addEventListener("mousedown", (ev) => {
   if (!state.marking || ev.button !== 0) return;
   const cv = ev.target.closest && ev.target.closest("#wave-input");
   if (!cv) return;
   ev.preventDefault();          // otherwise the drag selects surrounding text
-  state.drag = { cv, from: fracOf(cv, ev), to: fracOf(cv, ev) };
+  state.drag = { cv, from: fracOf(cv, ev), to: fracOf(cv, ev), x0: ev.clientX };
 });
 document.addEventListener("mousemove", (ev) => {
   if (!state.drag) return;
   state.drag.to = fracOf(state.drag.cv, ev);
   paintWave(state.drag.cv.id);
 });
-document.addEventListener("mouseup", () => {
+document.addEventListener("mouseup", (ev) => {
   const d = state.drag;
   state.drag = null;
   if (!d) return;
-  const dur = truthDur();
-  const a = Math.min(d.from, d.to) * dur, b = Math.max(d.from, d.to) * dur;
-  // a click without a drag deletes: it removes the region under the pointer
-  if (b - a < 0.02) {
-    const t = a;
-    const hit = state.truth.findIndex(([s, e]) => t >= s && t <= e);
-    if (hit >= 0) state.truth.splice(hit, 1);
-  } else {
-    state.truth.push([a, b]);
+  // a click does nothing to the marks (a double-click deletes one, below)
+  if (Math.abs(ev.clientX - d.x0) >= DRAG_PX) {
+    const dur = truthDur();
+    pushMarkUndo();
+    state.truth.push([Math.min(d.from, d.to) * dur, Math.max(d.from, d.to) * dur]);
+    renderMarkBar();
   }
+  repaintAllWaves();
+});
+// Double-click a region to delete it. The hit test is widened by a few pixels
+// either side, so a mark narrower than a pixel on a long call can still be hit.
+document.addEventListener("dblclick", (ev) => {
+  if (!state.marking) return;
+  const cv = ev.target.closest && ev.target.closest("#wave-input");
+  const dur = truthDur();
+  if (!cv || !dur) return;
+  const r = cv.getBoundingClientRect();
+  const at = (x) => fromView(Math.max(0, Math.min(1, (x - r.left) / r.width))) * dur;
+  const t = at(ev.clientX), lo = at(ev.clientX - DRAG_PX), hi = at(ev.clientX + DRAG_PX);
+  const near = state.truth.map((x, i) => [x, i]).filter(([[s, e]]) => s <= hi && e >= lo);
+  if (!near.length) return;
+  // the region under the pointer, else the nearest within reach
+  const gap = ([s, e]) => (t >= s && t <= e ? 0 : Math.min(Math.abs(t - s), Math.abs(t - e)));
+  const [[s, e, id], i] = near.reduce((p, q) => (gap(q[0]) < gap(p[0]) ? q : p));
+  pushMarkUndo();
+  state.truth.splice(i, 1);
+  const m = id && state.marks.find((x) => x.id === id);
+  const lost = m && refDone(m) ? (refVal(m) === null ? " and its ∅ reference" : " and its reference") : "";
+  setStatus(`deleted the mark at ${s.toFixed(2)}–${e.toFixed(2)} s${lost} · undo brings it back, done saves`);
   renderMarkBar();
   repaintAllWaves();
 });
+// every edit in mark mode snapshots the regions first, so undo reverses the
+// last edit, whether it added one or deleted one
+function pushMarkUndo() {
+  (state.markUndo = state.markUndo || []).push(state.truth.map((x) => x.slice()));
+}
 
 function markedSpeech() {
   return state.truth.reduce((n, [s, e]) => n + (e - s), 0);
@@ -1828,9 +1968,13 @@ function renderMarkBar() {
   if (!bar) return;
   const dur = truthDur();
   const cov = dur ? (markedSpeech() / dur) * 100 : 0;
+  const nIg = (state.ignoreSpans || []).length, nNs = (state.knownNonspeech || []).length;
   const summary = `<span class="meta">${state.truth.length} region${
     state.truth.length === 1 ? "" : "s"} · ${markedSpeech().toFixed(2)} s
-    (${cov.toFixed(0)}% of the call)</span>`;
+    (${cov.toFixed(0)}% of the call)${nIg || nNs ? ` · <span title="set via POST /api/runs/&lt;id&gt;/truth; read-only here">${
+      nIg ? `<span style="color:var(--body-subtle)">▨ ${nIg} ignore</span>` : ""}${nIg && nNs ? " · " : ""}${
+      nNs ? `<span style="color:var(--danger-strong)">■ ${nNs} known non-speech: ${
+        (state.knownNonspeech || []).map((w) => esc(w.name)).join(", ")}</span>` : ""}</span>` : ""}</span>`;
   if (EX) {   // no server to save to; show what was marked and nothing else
     bar.innerHTML = state.truth.length
       ? `<span class="meta" style="color:var(--mark-strong)">✎ marked speech</span> ${summary}`
@@ -1847,9 +1991,10 @@ function renderMarkBar() {
       <button class="mini" id="btnMarkClear">clear</button>
       <button class="mini" id="btnMarkCancel">cancel</button> ${summary}
       <span class="hint" style="margin:0;display:block">Drag across the waveform above
-        to mark a stretch of <b>real</b> speech; click inside a region to delete it.
-        Click-to-play is off while marking. Press done to score every candidate's
-        VAD against those marks.</span>`;
+        to mark a stretch of <b>real</b> speech; <b>double-click</b> a region to delete it
+        (undo brings it back). Click-to-play is off while marking. Press done to save: the VAD bench is
+        re-scored against the marks, and each one gets a reference box under
+        <b>VAD-cut WER</b>. A region drawn over a referenced mark keeps its text.</span>`;
   }
 }
 
@@ -1860,10 +2005,12 @@ document.addEventListener("click", async (ev) => {
   if (t.id === "btnMark") {
     state.marking = true;
     state.truthBackup = state.truth.map((x) => x.slice());
-    setStatus("marking mode — drag on the input waveform");
+    state.markUndo = [];
+    setStatus("marking mode — drag on the input waveform to add, double-click a region to delete");
   } else if (t.id === "btnMarkUndo") {
-    state.truth.pop();
+    if (state.markUndo && state.markUndo.length) state.truth = state.markUndo.pop();
   } else if (t.id === "btnMarkClear") {
+    pushMarkUndo();
     state.truth = [];
   } else if (t.id === "btnMarkCancel") {
     state.truth = state.truthBackup || [];
@@ -1875,10 +2022,17 @@ document.addEventListener("click", async (ev) => {
       const r = await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/truth`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spans: state.truth }),
+        // an id keeps that mark and its reference; a region without one is new.
+        // Unsaved reference text rides along, so a re-mark cannot lose it.
+        body: JSON.stringify({
+          marks: state.truth.map(([s, e, id]) => id ? { id, start: s, end: e } : { start: s, end: e }),
+          refs: dirtyRefs(),
+        }),
       });
-      setStatus(`marked ${r.n} region(s), ${r.speech_s} s of speech — scoring`);
-      loadRun(state.selectedRun);   // re-scores every candidate against the marks
+      state.refDraft = {};
+      setStatus(`marked ${r.n} region(s), ${r.speech_s} s of speech — re-scored`
+        + (r.reference && r.reference.checks ? ` · ${r.reference.checks} mark(s) to check: their reference was merged or moved` : ""));
+      loadRun(state.selectedRun);
       return;
     } catch (e) {
       setStatus("could not save marks: " + e.message, true);
@@ -1909,48 +2063,72 @@ document.addEventListener("play", () => { if (!playRaf) playheadLoop(); }, true)
 
 async function loadRun(runId) {
   const meta = await api("/api/runs/" + runId);
+  // The VAD bench is rendered from the server's FRESH view: every row re-checked
+  // against the audio on disk, so a re-processed candidate's old rows come back
+  // stale instead of ranking. An export has no server; it shows what was stored.
+  if (!EX && meta.vad_bench) {
+    try { meta.vad_bench = await api(`/api/runs/${encodeURIComponent(runId)}/vad_bench`); }
+    catch { /* keep the stored copy */ }
+  }
+  // a different run means a different length (open it at full view) and other
+  // marks (drop any reference typed for the last one)
+  if (state.selectedRun !== runId) {
+    state.viewZoom = 1; state.viewStart = 0; state.refDraft = {}; state.refStash = {};
+    peakCache.clear();   // one run's peaks at a time
+  }
   state.selectedRun = runId;
-  state.runMeta = meta;   // baseVad() reads the no-NC span set off this
+  state.runMeta = meta;
+  renderViewBar();
   $("resRun").textContent = "— " + runId + " (" + meta.source + ", " + meta.status + ")";
-  const hasSeg = (meta.candidates || []).some((c) => c.stt_seg);
-  if (!hasSeg) state.werMode = "whole";        // nothing segmented to show
-  else if (!state.werModeTouched) state.werMode = "seg";
-  $("werMode").style.display = hasSeg ? "" : "none";
-  $("werMode").value = state.werMode;
   $("noteEdit").style.display = EX ? "none" : "flex";  // no server to save to
   $("runNote").value = meta.note || "";
-  showScriptUsed(meta.script);
-  showVadBar(meta);
   // needs a server and an input.wav to replay
   $("btnReproc").style.display =
     (!EX && meta.input && meta.input.file) ? "" : "none";
-  state.wavePeaks = {}; state.fitCache = null; state.vadSpans = {};
+  state.wavePeaks = {}; state.fitCache = null;
                          // canvases are about to be replaced; stale peaks would
                          // repaint onto whatever canvas reuses the id
-  state.truth = (meta.truth_spans || []).map((x) => x.slice());
+  state.marks = marksOf(meta);
+  state.truth = state.marks.map((m) => [m.start, m.end, m.id]);
+  state.ignoreSpans = (meta.ignore_spans || []).map((x) => x.slice());
+  state.knownNonspeech = (meta.known_nonspeech || []).map((w) => Object.assign({}, w));
   state.marking = false; state.drag = null;
+  showScriptUsed(meta);
+  pickVads(meta);        // before the cards: their transcript and first paint read it
   $("results").innerHTML = "";
   for (const e of meta.candidates || []) renderCandidateCard(runId, e);
   renderInputCard(runId, meta);
   renderRankings(runId, meta);
+  renderVadBench(runId, meta);
+  renderVadRankings(runId, meta);
+  renderRail();
   document.querySelectorAll("tr.run").forEach((tr) =>
     tr.classList.toggle("sel", tr.dataset.id === runId));
 }
 
-// ---------------------------------------------------- vad vs marked speech
-// Scored server-side (nc_bench/vad.py score_spans) and stored per candidate as
-// `truth_score`. It lives there rather than here because saving the marks is
-// already a round trip, so computing on the way costs nothing — and because a
-// frame-mask comparison is real logic that deserves a runnable check
-// (scripts/check_truth_score.py), which JS in a <script> tag would not get.
-function truthLine(t) {
-  if (!t) return "";
-  const col = t.agree >= 0.9 ? "var(--success-strong)"
-    : t.agree >= 0.75 ? "var(--fg-warning)" : "var(--danger-strong)";
-  return `<div class="meta"><b>vs marked speech</b>
-    <span style="color:${col}">${(t.agree * 100).toFixed(1)}% agree</span>
-    · missed <b>${t.miss_s.toFixed(2)} s</b> of marked speech
-    · ${t.fa_s.toFixed(2)} s flagged that was never marked</div>`;
+// Every mark with an id. The server adds them (derived from the bounds for runs
+// marked before ids existed); an export made before that only has the spans.
+function marksOf(meta) {
+  if (meta.truth_marks) return meta.truth_marks.map((m) => Object.assign({}, m));
+  return (meta.truth_spans || []).map(([s, e], i) => ({ id: "span" + i, start: s, end: e, ref: "" }));
+}
+// A mark's reference as saved, and as the page has it now (typed-but-unsaved
+// wins): a string ("" = none yet), or null when the mark is expected empty —
+// the VAD may open on it, but the STT should return nothing. The API takes the
+// same null.
+const EMPTY_REF = "expected empty: the STT should return nothing here";
+const refSaved = (m) => m.ref_empty ? null : (m.ref || "").trim();
+const refVal = (m) => m.id in state.refDraft ? state.refDraft[m.id] : refSaved(m);
+const refText = (m) => (refVal(m) ?? "").trim();
+const refDone = (m) => refVal(m) === null || refText(m) !== "";
+function dirtyRefs() {
+  const out = {};
+  for (const m of state.marks) {
+    if (!(m.id in state.refDraft)) continue;
+    const d = state.refDraft[m.id], s = refSaved(m);
+    if (d === null ? s !== null : (s === null || d.trim() !== s)) out[m.id] = d;
+  }
+  return out;
 }
 
 // --------------------------------------------------------------- rankings
@@ -1959,19 +2137,21 @@ function truthLine(t) {
 // human's marks, steel for DNSMOS, emerald for noise, orange for the headline
 // WER, gold for latency. Nine grey tables in a grid were indistinguishable.
 const CATEGORIES = [
-  // First when it exists: it is the only column scored against what a human says
-  // was actually spoken, rather than against another model's opinion.
-  { key: "agree", label: "VAD vs marked speech", higher: true, hue: "var(--mark)",
-    fmt: (v) => (v * 100).toFixed(1) + "%", get: (_s, e) => e.truth_score?.agree },
-  { key: "miss",  label: "Marked speech the VAD missed", higher: false, hue: "var(--mark)",
-    fmt: (v) => v.toFixed(2) + " s", get: (_s, e) => e.truth_score?.miss_s },
+  // First when they exist: the only columns scored against what a human says was
+  // actually spoken. Read off the cyan VAD's bench row for each candidate.
+  { key: "agree", label: () => `VAD vs marked speech (${state.cyanVid})`, higher: true, hue: "var(--mark)",
+    fmt: (v) => (v * 100).toFixed(1) + "%", get: (_s, e) => cyanLive(e.id)?.frame?.agree },
+  { key: "miss",  label: () => `Marked speech the VAD missed (${state.cyanVid})`, higher: false, hue: "var(--mark)",
+    fmt: (v) => v.toFixed(2) + " s", get: (_s, e) => cyanLive(e.id)?.frame?.miss_s },
   { key: "ovrl",  label: "DNSMOS OVRL",        higher: true,  hue: "var(--steel)", fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.ovrl },
   { key: "sig",   label: "DNSMOS SIG (voice)", higher: true,  hue: "var(--steel)", fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.sig },
   { key: "bak",   label: "DNSMOS BAK (bkgd)",  higher: true,  hue: "var(--steel)", fmt: (v) => v.toFixed(2), get: (s) => s.dnsmos?.bak },
   { key: "nr",    label: "Noise cut in gaps",  higher: true,  hue: "var(--success)", fmt: (v) => v.toFixed(1) + " dB", get: (s) => s.noise_reduction_db },
   { key: "wer",   label: "WER (whole-file)",   higher: false, hue: "var(--brand)", fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer?.wer },
-  { key: "wer_seg", label: "WER ✂ VAD-cut (production-real)", higher: false, hue: "var(--vad)",
-    fmt: (v) => (v * 100).toFixed(1) + "%", get: (s) => s.wer_seg?.wer },
+  { key: "wer_same", label: () => `WER ✂ VAD-cut, ${state.cyanVid}, same audio`, higher: false, hue: "var(--vad)",
+    fmt: (v) => (v * 100).toFixed(1) + "%", get: (_s, e) => vbWer(cyanLive(e.id), "same") },
+  { key: "wer_raw", label: () => `WER ✂ VAD-cut, ${state.cyanVid}, STT on raw`, higher: false, hue: "var(--vad)",
+    fmt: (v) => (v * 100).toFixed(1) + "%", get: (_s, e) => vbWer(cyanLive(e.id), "raw") },
   { key: "p95",   label: "Block p95 (offline)", higher: false, hue: "var(--warning)", fmt: (v) => v.toFixed(2) + " ms", get: (_s, e) => e.latency?.block_ms_p95 },
   // the two that size a box rather than describe a delay. CPU is a thread clock,
   // so it stays attributable even when the bench runs chains side by side;
@@ -2009,7 +2189,8 @@ function renderRankings(runId, meta) {
     any = true;
     const box = document.createElement("div");
     box.style.setProperty("--accent", cat.hue);   // the dot, and the winner's rank
-    let html = `<div class="catlabel"><span>${cat.label} ${cat.higher ? "↑" : "↓"}`;
+    const label = typeof cat.label === "function" ? cat.label() : cat.label;
+    let html = `<div class="catlabel"><span>${esc(label)} ${cat.higher ? "↑" : "↓"}`;
     html += control ? ` <span style="color:var(--body-subtle)">· Δ vs no-NC</span>` : "";
     html += `</span></div><table>`;
     html += rows.map((r, i) => {
@@ -2046,24 +2227,40 @@ function renderRankings(runId, meta) {
 // The rankings sit below the results, so a ranked row is usually far from the
 // card it names — scroll to it and flash it, otherwise the jump lands in a wall
 // of near-identical cards with no indication of which one was requested.
-function showScriptUsed(script) {
-  const s = (script || "").trim();
+function showScriptUsed(meta) {
+  const s = (meta.script || "").trim();
+  const n = state.marks.length;
+  // what was SAVED: the script is derived from it, not from unsaved drafts
+  const nRef = state.marks.filter((m) => m.ref_empty || (m.ref || "").trim()).length;
+  const nEmpty = state.marks.filter((m) => m.ref_empty).length;
+  const emptyNote = nEmpty ? ` (${nEmpty} expected empty, adding no words)` : "";
+  const src = meta.script_source;
+  const box = $("scriptUsedText");
   $("scriptUsed").style.display = "";
-  const words = s ? s.split(/\s+/).length : 0;
+  box.style.color = "var(--heading)";
   if (s) {
+    const words = s.split(/\s+/).length;
     // one word is 100/words percent of WER — the single most useful number for
     // deciding whether a WER gap between two candidates means anything
-    $("scriptUsedWords").textContent =
-      `· ${words} words, so one word = ${(100 / words).toFixed(1)}% WER`;
-    $("scriptUsedText").textContent = s;
-  } else {
-    $("scriptUsedWords").textContent = "";
-    $("scriptUsedText").textContent =
-      "(none set for this run — candidates have no WER, only transcripts)";
-    $("scriptUsedText").style.color = "var(--body-subtle)";
+    $("scriptUsedWords").textContent = `· ${words} words, so one word = ${(100 / words).toFixed(1)}% WER · `
+      + (src === "marks" ? `the references of all ${n} purple marks, in time order${emptyNote}`
+        : "typed when the run was recorded; the marks' references replace it once every mark has one");
+    box.textContent = s;
     return;
   }
-  $("scriptUsedText").style.color = "var(--heading)";
+  box.style.color = "var(--body-subtle)";
+  if (src === "marks") {   // complete, but every mark is expected empty
+    $("scriptUsedWords").textContent = `· every one of the ${n} marks is expected empty: no reference words, so no WER`;
+    box.textContent = "(empty)";
+  } else if (n && nRef) {
+    $("scriptUsedWords").textContent = `· ${nRef} of ${n} marks referenced${emptyNote} — no WER anywhere until all are`;
+    box.textContent = state.marks.map((m) => m.ref_empty ? "[∅]" : (m.ref || "").trim() || "[…]").join(" ");
+  } else {
+    $("scriptUsedWords").textContent = "";
+    box.textContent = n
+      ? `(none yet — type what was said in each of the ${n} purple marks under VAD bench → VAD-cut WER)`
+      : "(none — mark the speech on the input card, then type what was said in each mark under VAD bench → VAD-cut WER)";
+  }
 }
 
 // The header is sticky, so scrollIntoView({block:"start"}) tucks the requested
@@ -2096,6 +2293,928 @@ function jumpToCandidate(cid) {
   flash(card);
 }
 
+// -------------------------------------------------------------- VAD bench
+// Many VAD models × this run's audio sources, through ONE shared segmenter
+// (nc_bench/vads/). Everything here reads meta.vad_bench. The cyan Silero spans
+// on the cards above are an older, separate measurement and stay exactly as
+// they were. The sidebar's "VAD models" list picks the models; the panel picks
+// the sources and the segmenter parameters.
+//
+// The question it answers, per run: which VAD, on which gate's audio, with
+// which parameters, opens a turn on every real utterance (no PR-42 miss) and
+// on nothing else (no PR-54 phantom)? Frame agreement hides both, so the
+// headline columns are event counts.
+
+// a useful first tick set; "select all" is one click away
+const DEFAULT_VADS = ["lk-inference", "silero-v4.0-8k", "firered-stream", "ten", "earshot",
+                      "aic-vad-ms-2.1"];
+const vbPct = (v) => (v * 100).toFixed(0) + "%";
+const vbPct1 = (v) => (v * 100).toFixed(1) + "%";
+const vbInt = (v) => String(v);
+const vbS2 = (v) => v.toFixed(2);
+const vbS3 = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3);
+const vbSrcLabel = (sid) => sid === "input" ? "input (raw)" : sid;
+
+async function loadVads() {
+  let r;
+  try { r = await api("/api/vads"); } catch (e) {
+    $("vadList").textContent = "could not load VADs: " + e.message; return;
+  }
+  state.vads = r.vads || [];
+  state.sttConc = r.stt_concurrency || state.sttConc;
+  const div = $("vadList");
+  div.innerHTML = ""; div.className = "";
+  const savedVads = loadPrefs().vads;     // the last ticks, else DEFAULT_VADS
+  for (const v of state.vads) {
+    const lab = document.createElement("label");
+    lab.className = "check";
+    lab.title = [v.licence && "licence: " + v.licence, v.notes].filter(Boolean).join("\n");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = v.id;
+    cb.disabled = !v.available;
+    cb.checked = v.available && (Array.isArray(savedVads) ? savedVads : DEFAULT_VADS).includes(v.id);
+    const span = document.createElement("span");
+    span.innerHTML = esc(v.label)
+      + (v.kind === "offline" ? ' <span class="why">· offline (sees the future)</span>' : "")
+      + (v.fixed ? ' <span class="why">· the spans recorded with old runs; no model runs</span>' : "")
+      + (!v.available ? ` <span class="why">— unavailable: ${esc(v.unavailable_reason || "")}</span>` : "");
+    lab.append(cb, span);
+    // a binary detector has no probability to threshold, recorded spans no model
+    if (!v.binary && !v.fixed) {
+      const thr = document.createElement("input");
+      thr.type = "number"; thr.className = "vbthr"; thr.step = "0.05";
+      thr.min = "0.05"; thr.max = "0.95"; thr.dataset.vad = v.id; thr.disabled = !v.available;
+      thr.placeholder = v.suggested_threshold != null ? v.suggested_threshold + "?" : "thr";
+      thr.title = `threshold override for ${v.id} (blank = the bench's activation)`
+        + (v.suggested_threshold != null ? ` · ${v.suggested_threshold} was best on PR-42` : "");
+      lab.append(thr);
+    }
+    div.appendChild(lab);
+  }
+  syncVadAllBtn();
+  // the cyan default follows the ticks, which did not exist until now
+  if (state.runMeta) { redisplay(); renderVadBench(state.selectedRun, state.runMeta); }
+}
+const vadTickable = () => [...document.querySelectorAll('#vadList input[type=checkbox]:not(:disabled)')];
+function tickedVads() {
+  return [...document.querySelectorAll('#vadList input[type=checkbox]:checked')].map((x) => x.value);
+}
+function vadThresholds() {
+  const out = {};
+  document.querySelectorAll("#vadList .vbthr").forEach((el) => {
+    if (el.value !== "" && isFinite(+el.value)) out[el.dataset.vad] = +el.value;
+  });
+  return out;
+}
+// the loaded run's saved overrides, so a re-segmentation starts from them
+function fillVadThresholds(th) {
+  if (!th) return;
+  document.querySelectorAll("#vadList .vbthr").forEach((el) => {
+    const v = th[el.dataset.vad];
+    el.value = typeof v === "number" ? v : "";
+  });
+}
+function syncVadAllBtn() {
+  const boxes = vadTickable(), btn = $("btnVadAll");
+  if (!btn) return;
+  btn.disabled = !boxes.length;
+  btn.textContent = boxes.length && boxes.every((cb) => cb.checked) ? "select none" : "select all";
+}
+if ($("btnVadAll")) {
+  $("btnVadAll").onclick = () => {
+    const boxes = vadTickable();
+    const on = boxes.some((cb) => !cb.checked);
+    boxes.forEach((cb) => { cb.checked = on; });
+    syncVadAllBtn();
+    savePrefs({ vads: tickedVads() });
+  };
+  $("vadList").addEventListener("change", (ev) => {
+    syncVadAllBtn(); updateVcGate();
+    if (ev.target.type === "checkbox") savePrefs({ vads: tickedVads() });   // not the threshold boxes
+  });
+}
+
+// input first, then every candidate that left audio on disk
+function vbSourceIds(meta) {
+  const out = [];
+  if (meta.input && meta.input.file) out.push("input");
+  for (const c of meta.candidates || []) if (c.output) out.push(c.id);
+  return out;
+}
+function vbSources() {
+  const out = [];
+  document.querySelectorAll("#vbSources input[data-src]").forEach((cb) => {
+    if (cb.checked) out.push(cb.dataset.src);
+  });
+  return out;
+}
+// Every source this run has is ticked unless it was unticked here before: the
+// unticked ids are remembered across runs, so a candidate added later starts ticked.
+function saveVbSourcesOff() {
+  const off = new Set(loadPrefs().vbSrcOff || []);
+  document.querySelectorAll("#vbSources input[data-src]").forEach((cb) => {
+    if (cb.checked) off.delete(cb.dataset.src); else off.add(cb.dataset.src);
+  });
+  savePrefs({ vbSrcOff: [...off] });
+}
+
+function vbParams() {
+  const p = {};
+  for (const [k] of VAD_FIELDS) {
+    const el = $("vb-" + k);
+    if (el && el.value !== "") p[k] = parseFloat(el.value);
+  }
+  const sm = $("vb-smoothing");
+  if (sm) p.smoothing = sm.checked;
+  return p;
+}
+
+function vbSeedParams(meta) {
+  const vb = meta.vad_bench || {};
+  const p = Object.assign({}, state.vadDefaults || {}, meta.vad_params || {}, vb.params || {});
+  return p;
+}
+
+function vbLastRunNote(vb) {
+  const runs = (vb && vb.runs) || [];
+  const last = [...runs].reverse().find((r) => r.mode !== "stt");
+  if (!last) return "";
+  return `last run ${last.at} (${last.mode}, ${last.elapsed_s}s)`;
+}
+
+function renderVadBench(runId, meta) {
+  const body = $("vbBody");
+  const vb = meta.vad_bench || null;
+  $("vbRun").textContent = "— " + runId + (vb ? " · " + vbLastRunNote(vb) : "");
+  const srcs = vbSourceIds(meta);
+  if (!srcs.length) {
+    body.className = "hint";
+    body.textContent = "This run has no audio on disk to run a VAD on.";
+    return;
+  }
+  body.className = "";
+  if (vb) fillVadThresholds(vb.thresholds);
+  const p = vbSeedParams(meta);
+  let html = vbDisplayRow(meta);
+  if (!EX) {
+    const lim = state.vadLimits || {};
+    const fields = VAD_FIELDS.map(([k, label, why]) => {
+      const l = lim[k] || [0, 1];
+      return `<span class="vadfield"><label for="vb-${k}" title="${esc(why)}">${label}</label>
+        <input type="number" class="num" id="vb-${k}" value="${p[k] ?? ""}" step="0.01"
+          min="${l[0]}" max="${l[1]}" title="${esc(why)} · allowed ${l[0]}–${l[1]}" /></span>`;
+    });
+    fields.push(`<span class="vadfield" title="livekit's legacy Silero-plugin ExpFilter (0.35 per 32 ms, same time constant for every hop). Production's inference.VAD does not smooth.">
+      <label><input type="checkbox" id="vb-smoothing"${p.smoothing ? " checked" : ""}
+        style="vertical-align:-1px" /> smoothing (legacy plugin)</label></span>`);
+    const srcOff = new Set(loadPrefs().vbSrcOff || []);
+    const srcBoxes = srcs.map((sid) =>
+      `<label class="check"><input type="checkbox" data-src="${esc(sid)}"${srcOff.has(sid) ? "" : " checked"} />
+        <span>${esc(vbSrcLabel(sid))}</span></label>`).join("");
+    html += `<div class="well" style="--accent:var(--vad)">
+      <div class="cap">Audio sources <span class="note">— the VAD runs on each: input is the raw
+        leg, each NC candidate's output is that candidate as the VAD's gate. Every source this run
+        has is ticked unless you unticked it before</span></div>
+      <div id="vbSources">${srcBoxes}</div>
+      <div class="cap" style="margin-top:12px">Segmenter parameters <span class="note">— one set for
+        every VAD in a bench run (the livekit-agents state machine); a per-model threshold
+        override lives in the sidebar. legacy-silero keeps the parameters it was recorded with.</span></div>
+      <div id="vbFields" style="display:flex;flex-wrap:wrap;gap:8px 16px">${fields.join("")}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap">
+        <button id="btnVbRun" class="mini" title="infer what is missing (stored probabilities are reused), then segment and score">▶ run VAD bench</button>
+        <label class="vadfield" title="re-run inference even where fresh probabilities are stored">
+          <input type="checkbox" id="vbForce" style="vertical-align:-1px" /> force re-infer</label>
+        <button id="btnVbReseg" class="mini" title="no model runs: re-segment the stored probabilities with the parameters above — milliseconds">↻ re-segment only</button>
+        <span id="vbProg" class="hint" style="margin:0;flex:1 1 200px"></span>
+      </div>
+    </div>`;
+  }
+  html += vcSection();
+  html += `<div class="row" style="margin-top:14px;flex-wrap:wrap">
+      <span class="hint" style="margin:0">click a row to show that VAD as <b style="color:var(--vad-strong)">cyan</b>,
+        shift-click for <b style="color:#f2efe8">white</b></span>
+      <span style="flex:1"></span>
+      <label class="vadfield"><input type="checkbox" id="vbShowNa" style="vertical-align:-1px"${
+        loadPrefs().showNa ? " checked" : ""} /> show unavailable</label>
+    </div>
+    <div id="vbTable"></div>
+    <div class="hint">Scored against the hand-marked speech on the input card.
+      <b>recall</b> = marked turns any segment touches · <b>missed</b> = marked turns none touches
+      (PR-42) · <b>phantoms</b> = segments touching no marked turn (PR-54) · <b>lag</b> = segment
+      start − marked start over hit turns · <b>frag</b> = segments per hit turn · then the frame
+      scores (agree, f1, false-alarm s) and the cost. With no marked speech the event columns are
+      blank, never 0. <b>thr*</b> = a per-model override. <b>✕</b> = not ranked (hover for why):
+      legacy-silero rows are the spans recorded with the run, under their own parameters.</div>`;
+  body.innerHTML = html;
+
+  $("vbCyanSel").onchange = () => setPick("cyan", $("vbCyanSel").value);
+  $("vbWhiteSel").onchange = () => setPick("white", $("vbWhiteSel").value);
+  $("vbModeSel").onchange = () => { state.sttMode = $("vbModeSel").value; savePrefs(); redisplay(); };
+  if (!EX) {
+    $("btnVbRun").onclick = () => vbStart("run");
+    $("btnVbReseg").onclick = () => vbStart("reseg");
+    $("vbSources").onchange = () => { saveVbSourcesOff(); updateVcGate(); };
+    if ($("btnVbStt")) {
+      $("vbSttSame").checked = state.vcModes.same;
+      $("vbSttRaw").checked = state.vcModes.raw;
+      $("vbSttSame").onchange = $("vbSttRaw").onchange = () => {
+        state.vcModes = { same: $("vbSttSame").checked, raw: $("vbSttRaw").checked };
+        savePrefs({ vcModes: state.vcModes });
+        updateVcGate();
+      };
+      $("vbSttForce").onchange = updateVcGate;
+      $("btnVbStt").onclick = () => vbStart("stt");
+      $("btnRefSave").onclick = saveRefs;
+    }
+    setVbButtons();
+  }
+  $("vbShowNa").onchange = () => { savePrefs({ showNa: $("vbShowNa").checked }); renderVbTable(state.runMeta); };
+  renderVbTable(meta);
+  document.querySelectorAll("#vcRefs textarea").forEach((ta) => syncRefRow(ta.dataset.ref));
+}
+
+// The two markers, and which VAD-cut transcript the cards read.
+function vbDisplayRow(meta) {
+  const vids = vbResultVads(meta);
+  const name = (v) => v === "legacy-silero" ? "legacy-silero (recorded with the run)" : v;
+  const opts = (sel) => `<option value="">— none —</option>` + vids.map((v) =>
+    `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(name(v))}</option>`).join("");
+  return `<div class="row" style="flex-wrap:wrap;gap:8px 14px;margin-bottom:12px">
+    <label class="lbl" for="vbCyanSel" style="color:var(--vad-strong)">cyan · main VAD</label>
+    <select id="vbCyanSel" title="the cyan wash + bottom bar on every card. Its VAD-cut transcript is the card's transcript and what hovering a cyan stretch shows; the NC rankings' agree / missed columns read it too">${opts(state.cyanVid)}</select>
+    <label class="lbl" for="vbWhiteSel" style="color:#f2efe8">white · compare</label>
+    <select id="vbWhiteSel" title="a thin bone-white bar just above the cyan one, to compare against">${opts(state.whiteVid)}</select>
+    <label class="lbl" for="vbModeSel">transcripts</label>
+    <select id="vbModeSel" title="which VAD-cut transcript the cards and the hover popup show">
+      <option value="same"${state.sttMode === "same" ? " selected" : ""}>same: STT on the audio the VAD ran on</option>
+      <option value="raw"${state.sttMode === "raw" ? " selected" : ""}>raw: STT on none, cut where the VAD ran</option>
+    </select>
+    ${vids.length ? "" : `<span class="hint" style="margin:0">no VAD results on this run yet: run the bench below</span>`}
+  </div>`;
+}
+
+// One reference box per purple mark, and the gated start.
+function vcSection() {
+  const ms = state.marks;
+  const head = `<div class="cap">VAD-cut WER <span class="note">— each source is cut at the ticked
+    VADs' segments, one STT request per cut, and the joined cuts are scored against these references
+    joined in time order. Speech nobody marked that the STT hears counts as extra words; a cut wholly
+    inside an ignore span is not scored.</span></div>`;
+  if (!ms.length) {
+    return `<div class="well" style="--accent:var(--mark);margin-top:12px">${head}
+      <div class="hint">No purple marks on this run yet. Press <b>✎ mark speech</b> on the input card and
+      drag over each stretch of real speech; every mark gets a reference box here.</div></div>`;
+  }
+  const rows = ms.map((m, i) => {
+    const val = refVal(m);
+    const ctl = EX
+      ? `<div class="vcro">${val === null ? `<span style="color:var(--body-subtle)">∅ ${EMPTY_REF}</span>`
+          : esc(m.ref || "") || `<span style="color:var(--body-subtle)">(no reference)</span>`}</div>`
+      : `<textarea data-ref="${esc(m.id)}" rows="1"></textarea>`;
+    const tog = EX ? "<span></span>"
+      : `<button class="mini vcempty" data-empty="${esc(m.id)}" title="expected empty: the VAD may open here,
+          but the STT should return nothing (noise). Adds no reference words; any text the STT returns here
+          counts as extra words. Click again to type a reference instead">∅</button>`;
+    return `<div class="vcref">
+      <button class="mini" data-play="${esc(m.id)}" title="play this mark from the input">▶</button>
+      <span class="vct">#${i + 1} · ${m.start.toFixed(2)}–${m.end.toFixed(2)} s</span>
+      ${ctl}
+      ${tog}
+      ${m.check ? `<span class="vcchk" title="merged with another mark, or resized, after its reference was typed: check the text still matches what is said, then save">⚠ check</span>` : "<span></span>"}
+    </div>`;
+  }).join("");
+  let html = `<div class="well" style="--accent:var(--mark);margin-top:12px">${head}<div id="vcRefs">${rows}</div>`;
+  if (!EX) {
+    html += `<div class="row" style="margin-top:10px;flex-wrap:wrap">
+        <button id="btnRefSave" class="mini" disabled>save references</button>
+        <span id="refState" class="hint" style="margin:0"></span></div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap">
+        <label class="vadfield" title="same: STT reads the audio the VAD ran on"><input type="checkbox" id="vbSttSame" style="vertical-align:-1px" /> same</label>
+        <label class="vadfield" title="raw: STT reads the untouched leg (none), cut where the VAD ran — production's split gate"><input type="checkbox" id="vbSttRaw" style="vertical-align:-1px" /> raw</label>
+        <label class="vadfield" title="send every cut again instead of reusing the text already stored for a cut with the same bounds on the same audio (e.g. after changing the STT server)"><input type="checkbox" id="vbSttForce" style="vertical-align:-1px" /> force</label>
+        <button id="btnVbStt" class="mini" disabled title="one STT request per cut, for every ticked VAD × source that has bench results">✂ run VAD-cut WER</button>
+        <span id="vcWhy" class="hint" style="margin:0;flex:1 1 240px"></span></div>`;
+  }
+  return html + "</div>";
+}
+
+function autoGrow(ta) { ta.style.height = "auto"; ta.style.height = Math.min(160, ta.scrollHeight + 2) + "px"; }
+document.addEventListener("input", (ev) => {
+  const ta = ev.target.closest && ev.target.closest("#vcRefs textarea[data-ref]");
+  if (!ta) return;
+  state.refDraft[ta.dataset.ref] = ta.value;
+  ta.classList.toggle("missing", !ta.value.trim());
+  autoGrow(ta);
+  updateVcGate();
+});
+
+// one reference row drawn from refVal(): text, nothing yet, or expected empty
+function syncRefRow(id) {
+  const m = state.marks.find((x) => x.id === id);
+  const ta = document.querySelector(`#vcRefs textarea[data-ref="${CSS.escape(id)}"]`);
+  if (!m || !ta) return;
+  const val = refVal(m), empty = val === null;
+  ta.value = empty ? "" : val;
+  ta.disabled = empty;
+  ta.className = empty ? "nothing" : val.trim() ? "" : "missing";
+  ta.placeholder = empty ? `∅ ${EMPTY_REF}` : "what was said in this mark, word for word, fillers included";
+  const b = document.querySelector(`#vcRefs button[data-empty="${CSS.escape(id)}"]`);
+  if (b) b.classList.toggle("on", empty);
+  autoGrow(ta);
+}
+// ∅ toggles a mark between expected empty and a typed reference; text typed
+// before switching it on comes back when it is switched off
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest && ev.target.closest("#vcRefs button[data-empty]");
+  if (!b) return;
+  const id = b.dataset.empty, m = state.marks.find((x) => x.id === id);
+  if (!m) return;
+  const cur = refVal(m);
+  if (cur === null) {
+    state.refDraft[id] = state.refStash[id] ?? (m.ref_empty ? "" : (m.ref || ""));
+  } else {
+    state.refStash[id] = cur;
+    state.refDraft[id] = null;
+  }
+  syncRefRow(id);
+  updateVcGate();
+});
+
+// ▶ on a reference row plays that mark from the input card's player and stops
+// at its end, so it can be typed while listening
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest && ev.target.closest("button[data-play]");
+  if (!b) return;
+  const m = state.marks.find((x) => x.id === b.dataset.play);
+  const cv = $("wave-input"), audio = cv && waveAudio(cv), dur = truthDur();
+  if (!m || !audio || !dur) { setStatus("no input audio to play", true); return; }
+  audio.pause();
+  if (audio._stopAt) audio.removeEventListener("timeupdate", audio._stopAt);
+  audio._stopAt = () => { if (audio.currentTime >= m.end) { audio.pause(); audio.removeEventListener("timeupdate", audio._stopAt); } };
+  audio.addEventListener("timeupdate", audio._stopAt);
+  seekAndPlay(audio, m.start / dur);
+});
+
+// what stt.cut_list would send for one row: starts padded, overlaps merged,
+// 20 ms slivers dropped
+function cutCount(r) {
+  const pad = r.params?.prefix_padding_duration ?? 0.5, dur = r.duration_s || Infinity;
+  let n = 0, end = -Infinity;
+  for (const [a, b] of r.segments || []) {
+    const s = Math.max(0, a - pad), e = Math.min(dur, b);
+    if (e - s < 0.02) continue;
+    if (s <= end) end = Math.max(end, e); else { n++; end = e; }
+  }
+  return n;
+}
+function vcPairs(meta) {
+  const vids = new Set(tickedVads()), srcs = new Set(vbSources());
+  return vbRows(meta).filter((x) => vids.has(x.vid) && srcs.has(x.sid) && vbLive(x.r));
+}
+function updateVcGate() {
+  const btn = $("btnVbStt");
+  if (!btn || !state.runMeta) return;
+  const n = state.marks.length;
+  const missing = state.marks.filter((m) => !refDone(m)).length;
+  const empty = state.marks.filter((m) => refVal(m) === null).length;
+  const dirty = Object.keys(dirtyRefs()).length;
+  const checks = state.marks.filter((m) => m.check).length;
+  $("refState").textContent = `${n - missing} of ${n} marks referenced`
+    + (empty ? ` (${empty} expected empty)` : "")
+    + (dirty ? ` · ${dirty} unsaved` : "") + (checks ? ` · ${checks} to check` : "");
+  $("btnRefSave").disabled = !dirty || state.vbBusy;
+  const modes = [["vbSttSame", "same"], ["vbSttRaw", "raw"]].filter(([id]) => $(id).checked);
+  const force = $("vbSttForce").checked;
+  const pairs = vcPairs(state.runMeta);
+  // a pair × mode with a current per-cut transcript sends nothing (the server
+  // reuses every cut). One that is stale or missing is counted in full: the
+  // server may still reuse the cuts that did not move, so this is a ceiling
+  let req = 0, cached = 0;
+  for (const x of pairs) {
+    for (const [, m] of modes) {
+      if (!force && vbSttRec(x.r, m)?.cuts) cached++;
+      else req += cutCount(x.r);
+    }
+  }
+  let why = null;
+  if (state.vbBusy) why = "a VAD bench job is running on this run";
+  else if (missing) why = `${missing} of ${n} marks still need a reference`;
+  else if (dirty) why = "save the references first";
+  else if (!pairs.length) why = "run the VAD bench on the ticked VADs × sources first";
+  else if (!modes.length) why = "tick same and/or raw";
+  const nothing = !why && !req;
+  btn.disabled = !!why || nothing;
+  const w = $("vcWhy");
+  w.classList.toggle("blocked", !!why);
+  const total = pairs.length * modes.length;
+  w.textContent = why || (nothing
+    ? `all ${total} transcript${total === 1 ? " is" : "s are"} current, so there is nothing to send: saving `
+      + "references re-scores VAD-cut WER from the stored cuts, no STT needed. Tick force to transcribe again"
+    : `${pairs.length} pair${pairs.length === 1 ? "" : "s"} × ${modes.length} mode${modes.length === 1 ? "" : "s"}: `
+      + (cached ? `${cached} current (reused), ` : "")
+      + `up to ${req} STT requests, ${state.sttConc} pairs at a time`);
+}
+async function saveRefs() {
+  const refs = dirtyRefs();
+  if (!Object.keys(refs).length) return;
+  $("btnRefSave").disabled = true;
+  try {
+    const r = await api(`/api/runs/${encodeURIComponent(state.selectedRun)}/refs`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refs }) });
+    state.refDraft = {};
+    const st = r.reference || {};
+    setStatus(!st.complete ? `references saved: ${st.referenced} of ${st.marks} marks; WER waits for the rest`
+      : st.words ? `references saved: ${st.words} words in the full reference; every WER on the run re-scored, `
+        + "VAD-cut included (from the stored cuts, so no ✂ needed)"
+      : `references saved: every mark is expected empty, so there are no reference words and no WER`);
+    loadRun(state.selectedRun);
+  } catch (e) {
+    setStatus("could not save the references: " + e.message, true);
+    updateVcGate();
+  }
+}
+
+function setVbButtons() {
+  for (const id of ["btnVbRun", "btnVbReseg"]) {
+    const b = $(id);
+    if (b) b.disabled = state.vbBusy;
+  }
+  updateVcGate();
+}
+
+// A row is LIVE when its spans were computed from the audio and parameters that
+// are current; stale rows stay visible (greyed, struck through) but are drawn
+// nowhere and ranked nowhere. A live row can still be excluded from rankings
+// (rank_excluded: e.g. ai-coustics flags missing over marked speech, or a
+// legacy-silero row, recorded under its own parameters).
+const vbLive = (r) => !!(r && r.segments) && !r.stale;
+const vbRankable = (r) => vbLive(r) && !r.rank_excluded;
+// a VAD-cut transcript only counts while it is current
+const vbSttRec = (r, mode) => { const s = r && r.stt && r.stt[mode]; return s && !s.stale && !s.error ? s : null; };
+const vbWer = (r, mode) => { const s = vbSttRec(r, mode); return s ? s.wer?.wer ?? null : null; };
+const vbRow = (meta, sid, vid) => (((((meta || {}).vad_bench || {}).results || {})[sid]) || {})[vid] || null;
+// the cyan VAD's live row for one source, and its VAD-cut transcript in the mode shown
+function cyanLive(sid) {
+  const r = state.cyanVid ? vbRow(state.runMeta, sid, state.cyanVid) : null;
+  return vbLive(r) ? r : null;
+}
+const cyanCut = (sid) => vbSttRec(cyanLive(sid), state.sttMode);
+
+function vbResultVads(meta) {
+  const out = new Set();
+  const res = ((meta.vad_bench || {}).results) || {};
+  for (const per of Object.values(res)) {
+    for (const [vid, r] of Object.entries(per)) if (vbLive(r)) out.add(vid);
+  }
+  // in registry order, which is also the sidebar's
+  const order = state.vads.map((v) => v.id);
+  return [...out].sort((a, b) => (order.indexOf(a) + 1 || 1e9) - (order.indexOf(b) + 1 || 1e9));
+}
+
+// cyan: what was picked by hand on this run, else the last hand pick on any run
+// (remembered across reloads) if this run has it, else legacy-silero on a run
+// that has the spans recorded with it (the cyan it was judged by), else the
+// first ticked VAD with results, else the first in registry order. white: a hand
+// pick, this run's or the remembered one.
+function pickVads(meta) {
+  const vids = vbResultVads(meta);
+  const p = state.pick[state.selectedRun] || {};
+  const last = loadPrefs().pick || {};
+  const chosen = (k) => k in p && (p[k] === "" || vids.includes(p[k]));
+  const order = [...tickedVads(), ...state.vads.map((v) => v.id)];
+  state.cyanVid = chosen("cyan") ? p.cyan
+    : vids.includes(last.cyan) ? last.cyan
+    : vids.includes("legacy-silero") ? "legacy-silero"
+    : order.find((v) => vids.includes(v)) || vids[0] || "";
+  const white = chosen("white") ? p.white : vids.includes(last.white) ? last.white : "";
+  state.whiteVid = white !== state.cyanVid ? white : "";
+  state.cyanSpans = spanMap(meta, state.cyanVid);
+  state.whiteSpans = spanMap(meta, state.whiteVid);
+}
+// canvas id -> that VAD's span set on that source
+function spanMap(meta, vid) {
+  const out = {};
+  if (!vid || !meta) return out;
+  for (const [sid, per] of Object.entries(((meta.vad_bench || {}).results) || {})) {
+    const r = per[vid];
+    if (!vbLive(r)) continue;     // never draw spans of audio that is no longer there
+    out[sid === "input" ? "wave-input" : "wave-" + sid] = { segments: r.segments, duration_s: r.duration_s, row: r };
+  }
+  return out;
+}
+function setPick(kind, vid) {
+  const p = state.pick[state.selectedRun] = Object.assign({}, state.pick[state.selectedRun]);
+  p[kind] = vid;
+  if (kind === "cyan" && p.white === vid) p.white = "";
+  if (kind === "white" && vid && vid === state.cyanVid) { setStatus(vid + " is already cyan"); p.white = ""; }
+  savePrefs({ pick: { cyan: p.cyan ?? state.cyanVid, white: p.white ?? state.whiteVid } });
+  redisplay();
+  setStatus(kind === "cyan" ? (vid ? `cyan: ${vid}` : "no cyan VAD") : (vid ? `white: ${vid}` : "no white VAD"));
+}
+// After a marker or transcript-mode change: only what reads them is redrawn —
+// the cards keep their audio and decoded peaks.
+function redisplay() {
+  const meta = state.runMeta;
+  if (!meta) return;
+  pickVads(meta);
+  for (const e of meta.candidates || []) {
+    const tx = $("tx-" + e.id); if (tx) tx.innerHTML = transcriptBlock(e);
+    const vi = $("vi-" + e.id); if (vi) vi.innerHTML = vadInfoLine(e.id);
+  }
+  const vi = $("vi-input"); if (vi) vi.innerHTML = vadInfoLine("input");
+  if ($("vbCyanSel")) $("vbCyanSel").value = state.cyanVid;
+  if ($("vbWhiteSel")) $("vbWhiteSel").value = state.whiteVid;
+  renderRankings(state.selectedRun, meta);
+  renderVbTable(meta);
+  hideTip();
+  repaintAllWaves();
+  renderRail();
+}
+
+// What the cyan VAD did on one source, in one line.
+function vadInfoLine(sid) {
+  if (!state.cyanVid) return "";
+  const lab = `<b style="color:var(--vad-strong)">cyan</b> ${esc(state.cyanVid)}`;
+  const r = cyanLive(sid);
+  if (!r) {
+    const raw = vbRow(state.runMeta, sid, state.cyanVid);
+    const why = raw && raw.stale ? "stale: " + (raw.stale_reason || "")
+      : raw && raw.unavailable ? raw.unavailable
+      : raw && raw.error ? "error: " + raw.error : "not run on this source yet";
+    return `<div class="meta">${lab}: ${esc(why)}</div>`;
+  }
+  const ev = r.events || {};
+  const vs = state.marks.length && ev.turn_recall != null
+    ? ` · vs marks: recall ${(ev.turn_recall * 100).toFixed(0)}% · missed <b>${ev.missed_n}</b> · phantoms <b>${ev.phantom_n}</b>`
+      + (r.frame ? ` · agree ${(r.frame.agree * 100).toFixed(1)}%` : "")
+    : "";
+  const rec = r.fixed ? ` <span style="color:var(--body-subtle)">(${esc(r.label || "recorded")})</span>` : "";
+  return `<div class="meta">${lab}${rec}: ${r.n} seg${r.n === 1 ? "" : "s"} · ${r.speech_s.toFixed(2)} s speech
+    (${(r.coverage * 100).toFixed(0)}% of the file)${vs}</div>`;
+}
+
+// Table columns. `get` reads a result, `fmt` prints it, `higher` is the good
+// direction (for sorting best-first on the first click).
+const VB_COLS = [
+  { key: "vad", head: "VAD", get: (r) => r.vad, text: true },
+  { key: "src", head: "source", get: (r, sid) => sid, text: true },
+  { key: "thr", head: "thr", get: (r) => r.binary ? null : r.params?.activation_threshold,
+    fmt: (v, r) => v.toFixed(2) + (r.params?.threshold_override ? "*" : "") },
+  { key: "cov", head: "flag cov", get: (r) => r.flag_coverage, fmt: vbPct1, higher: true,
+    why: "ai-coustics flags present on this share of frames; a missing frame is never read as 'no speech'",
+    flag: (v) => v < 0.99 ? "bad" : "" },
+  { key: "n", head: "segs", get: (r) => r.n, fmt: vbInt, higher: false },
+  { key: "recall", head: "recall", get: (r) => r.events?.turn_recall, fmt: vbPct, higher: true,
+    why: "marked turns any segment touches" },
+  { key: "missed", head: "missed", get: (r) => r.events?.missed_n, fmt: vbInt, higher: false,
+    why: "marked turns no segment touches — the PR-42 failure", flag: (v) => v > 0 ? "bad" : "good" },
+  { key: "missed_s", head: "missed s", get: (r) => r.events?.missed_s, fmt: vbS2, higher: false },
+  { key: "phantom", head: "phantoms", get: (r) => r.events?.phantom_n, fmt: vbInt, higher: false,
+    why: "segments touching no marked turn — the PR-54 failure", flag: (v) => v > 0 ? "bad" : "good" },
+  { key: "phantom_s", head: "phantom s", get: (r) => r.events?.phantom_s, fmt: vbS2, higher: false },
+  { key: "lag", head: "lag md", get: (r) => r.events?.onset_lag_med_s, fmt: vbS3, higher: false, abs: true,
+    why: "median segment start − marked start, over hit turns (+ = late)" },
+  { key: "lagmax", head: "lag max", get: (r) => r.events?.onset_lag_max_s, fmt: vbS3, higher: false, abs: true },
+  { key: "frag", head: "frag", get: (r) => r.events?.frag, fmt: vbS2, higher: false,
+    why: "segments per hit turn: 1.0 = one STT request per utterance" },
+  { key: "merged", head: "merged", get: (r) => r.events?.merged_turns, fmt: vbInt, higher: false,
+    why: "hit turns that share a segment with another marked turn (fused into one STT request)",
+    flag: (v) => v > 0 ? "bad" : "" },
+  { key: "ignored", head: "ignored", get: (r) => r.events?.ignored_segments, fmt: vbInt, higher: false,
+    why: "segments that touch no marked turn but do touch an ignore span (label uncertain): not counted as phantoms" },
+  { key: "nshits", head: "non-speech hit", get: (r) => {
+      const h = r.events?.nonspeech_hits; if (!h) return null;
+      const k = Object.keys(h); return k.length ? k.filter((n) => h[n]).length : null; },
+    fmt: (v, r) => { const h = r.events.nonspeech_hits;
+      const hit = Object.keys(h).filter((n) => h[n]);
+      return `${v}/${Object.keys(h).length}` + (hit.length ? " " + esc(hit.join(",")) : ""); },
+    higher: false, flag: (v) => v > 0 ? "bad" : "good",
+    why: "known non-speech sounds (named) that opened a segment" },
+  { key: "overreach", head: "overreach s", get: (r) => r.events?.overreach_s, fmt: vbS2, higher: false,
+    why: "seconds of unmarked audio inside segments that do touch a marked turn; one always-open segment has 0 misses and 0 phantoms but a huge overreach" },
+  { key: "agree", head: "agree", get: (r) => r.frame?.agree, fmt: vbPct1, higher: true },
+  { key: "f1", head: "f1", get: (r) => r.frame?.f1, fmt: (v) => v.toFixed(3), higher: true },
+  { key: "fa", head: "fa s", get: (r) => r.frame?.fa_s, fmt: vbS2, higher: false,
+    why: "seconds flagged as speech that were never marked (frame level)" },
+  { key: "cpu", head: "cpu ms/s", get: (r) => r.cpu_ms_per_s, fmt: (v) => v.toFixed(1), higher: false,
+    why: "CPU ms per second of audio, single thread, features included" },
+  { key: "wer_same", head: "WER same", get: (r) => vbWer(r, "same"), fmt: vbPct1, higher: false,
+    why: "VAD-cut WER with STT on the audio the VAD ran on", stt: "same" },
+  { key: "wer_raw", head: "WER raw", get: (r) => vbWer(r, "raw"), fmt: vbPct1, higher: false,
+    why: "VAD-cut WER with STT on raw (none) — production's split gate", stt: "raw" },
+];
+
+function vbRows(meta) {
+  const res = ((meta.vad_bench || {}).results) || {};
+  const rows = [];
+  for (const [sid, per] of Object.entries(res)) {
+    for (const [vid, r] of Object.entries(per)) rows.push({ sid, vid, r });
+  }
+  return rows;
+}
+
+function renderVbTable(meta) {
+  const div = $("vbTable");
+  if (!div) return;
+  const all = vbRows(meta);
+  if (!all.length) {
+    div.innerHTML = `<div class="hint">No VAD bench results on this run yet — tick VADs in the
+      sidebar, pick sources, press run.</div>`;
+    return;
+  }
+  const showNa = $("vbShowNa") && $("vbShowNa").checked;
+  // stale rows always show (they say what to re-run); unavailable/errored ones on request
+  let rows = all.filter((x) => x.r.segments || x.r.stale || showNa);
+  const hidden = all.length - rows.length;
+  const nStale = all.filter((x) => x.r.stale).length;
+  const s = state.vbSort;
+  if (s.key) {
+    const col = VB_COLS.find((c) => c.key === s.key);
+    const val = (x) => { const v = col.get(x.r, x.sid); return v == null ? null : (col.abs ? Math.abs(v) : v); };
+    rows.sort((a, b) => {
+      const va = val(a), vb2 = val(b);
+      if (va == null && vb2 == null) return 0;
+      if (va == null) return 1;
+      if (vb2 == null) return -1;
+      return (col.text ? String(va).localeCompare(String(vb2)) : va - vb2) * s.dir;
+    });
+  }
+  const head = VB_COLS.map((c) => `<th data-k="${c.key}"${c.why ? ` title="${esc(c.why)}"` : ""}
+    class="${s.key === c.key ? "sorted" : ""}">${c.head}${s.key === c.key ? (s.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("");
+  const body = rows.map(({ sid, vid, r }) => {
+    const base = `${vid}|${sid}` === state.vbBaseline;
+    if (!r.segments) {
+      const what = r.stale ? "⚠ stale: " + (r.stale_reason || "")
+        : r.unavailable ? "unavailable: " + r.unavailable : "error: " + (r.error || "?");
+      return `<tr class="na${r.stale ? " stale" : ""}"><td>${esc(vid)}</td><td>${esc(vbSrcLabel(sid))}</td>
+        <td colspan="${VB_COLS.length - 2}" style="text-decoration:none">${esc(what)}</td></tr>`;
+    }
+    const tds = VB_COLS.map((c) => {
+      if (c.key === "vad") {
+        const mark = r.stale ? ` <span title="${esc(r.stale_reason || "stale")}">⚠</span>`
+          : r.rank_excluded ? ` <span class="excl" title="not ranked: ${esc(r.rank_excluded)}">✕</span>` : "";
+        // which marker this VAD is: a cyan or bone-white tick before the name
+        const tag = vid === state.cyanVid ? `<span style="color:var(--vad)">▍</span>`
+          : vid === state.whiteVid ? `<span style="color:#f2efe8">▍</span>` : "";
+        return `<td style="color:var(--vad-strong)">${tag}${esc(vid)}${mark}</td>`;
+      }
+      if (c.key === "src") return `<td>${esc(vbSrcLabel(sid))}</td>`;
+      if (c.stt) {
+        const st = r.stt && r.stt[c.stt];
+        if (st && st.stale) return `<td title="${esc(st.stale_reason || "stale")}" style="color:var(--body-subtle)">stale</td>`;
+      }
+      const v = c.get(r, sid);
+      if (v == null) return "<td>—</td>";
+      const cls = c.flag ? c.flag(v) : "";
+      return `<td class="${cls}">${c.fmt(v, r)}</td>`;
+    }).join("");
+    const why = r.stale ? " · STALE: " + (r.stale_reason || "")
+      : r.rank_excluded ? " · not ranked: " + r.rank_excluded : "";
+    return `<tr class="rank${base ? " base" : ""}${r.stale ? " stale" : ""}" data-vad="${esc(vid)}"
+      title="${esc((r.label || vid) + why)}${base ? " · the VAD-rankings baseline" : ""}${
+      r.stale ? "" : " · click: show as cyan · shift-click: as white"}">${tds}</tr>`;
+  }).join("");
+  div.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+    + (nStale ? `<div class="hint" style="color:var(--fg-warning)">${nStale} stale row${nStale === 1 ? "" : "s"}
+        (⚠, struck through): computed from audio or parameters that are no longer current,
+        and left out of the rankings and the markers. Re-run the bench on them.</div>` : "")
+    + (hidden ? `<div class="hint">${hidden} unavailable/errored pair${hidden === 1 ? "" : "s"} hidden.</div>` : "");
+  div.querySelectorAll("th[data-k]").forEach((th) => {
+    th.onclick = () => {
+      const k = th.dataset.k, col = VB_COLS.find((c) => c.key === k);
+      // first click = best first, second flips
+      const first = col.text ? 1 : (col.higher ? -1 : 1);
+      state.vbSort = { key: k, dir: state.vbSort.key === k ? -state.vbSort.dir : first };
+      renderVbTable(state.runMeta);
+    };
+  });
+  div.querySelectorAll("tr.rank[data-vad]").forEach((tr) => {
+    if (tr.classList.contains("stale")) return;
+    tr.onclick = (ev) => setPick(ev.shiftKey ? "white" : "cyan", tr.dataset.vad);
+  });
+}
+
+async function vbStart(kind) {
+  if (!state.selectedRun || state.vbBusy) return;
+  const vadsSel = tickedVads();
+  if (!vadsSel.length) { setStatus("tick at least one VAD in the sidebar", true); return; }
+  const sources = vbSources();
+  if (!sources.length) { setStatus("tick at least one audio source in the VAD bench panel", true); return; }
+  let path = `/api/runs/${encodeURIComponent(state.selectedRun)}/vad_bench`, body;
+  if (kind === "stt") {
+    // the button is gated (updateVcGate); this is the same rule, re-checked
+    if (!$("btnVbStt") || $("btnVbStt").disabled) return;
+    const modes = [["vbSttSame", "same"], ["vbSttRaw", "raw"]]
+      .filter(([id]) => $(id).checked).map(([, m]) => m);
+    path += "/stt";
+    body = { vads: vadsSel, sources, modes, force: $("vbSttForce").checked };
+  } else {
+    body = { vads: vadsSel, sources, params: vbParams(),
+             thresholds: vadThresholds(), force: kind === "run" && $("vbForce").checked,
+             resegment_only: kind === "reseg" };
+  }
+  state.vbBusy = true; setVbButtons();
+  vbProgress("◐ starting…", kind === "stt");
+  try {
+    const r = await api(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(body) });
+    setStatus(kind === "stt" ? `VAD-cut WER started on ${r.run_id}`
+      : `VAD bench on ${r.run_id}: ${r.vads.length} VADs × ${r.sources.length} sources`);
+  } catch (e) {
+    state.vbBusy = false; setVbButtons();
+    vbProgress("", kind === "stt");
+    setStatus("VAD bench: " + e.message, true);
+  }
+}
+
+function vadBenchEvent(ev) {
+  if (ev.finished) {
+    if (ev.run_id === state.selectedRun) state.vbBusy = false;
+    if (ev.error) setStatus("VAD bench failed on " + ev.run_id + ": " + ev.error, true);
+    else if (ev.mode === "stt") setStatus(`VAD-cut WER done on ${ev.run_id}: ${ev.pairs} pairs, `
+      + (ev.sent != null ? `${ev.sent} cuts sent to the STT, ${ev.reused} reused, ` : "")
+      + `${ev.errors} errors (${ev.elapsed_s}s)`, !!ev.errors);
+    else setStatus(`VAD bench done on ${ev.run_id}: ${ev.inferred} inferred · ${ev.cached} cached · `
+      + `${ev.resegmented} re-segmented · ${ev.fixed || 0} recorded · ${ev.unavailable} unavailable · `
+      + `${ev.skipped} skipped · ${ev.errors} errors (${ev.elapsed_s}s)`, !!ev.errors);
+    if (ev.run_id === state.selectedRun) loadRun(ev.run_id);
+    return;
+  }
+  if (ev.run_id === state.selectedRun) {
+    vbProgress(`<span class="spin">◐</span> ${ev.done}/${ev.total} · `
+      + `${esc(vbSrcLabel(ev.source))} × ${esc(ev.vad)}: ${esc(ev.stage)}`, ev.stage === "stt", true);
+  }
+}
+// a bench job reports next to its own button: the bench's under the bench,
+// VAD-cut WER's under VAD-cut WER
+function vbProgress(html, stt, isHtml) {
+  const el = $(stt ? "vcWhy" : "vbProg");
+  if (!el) return;
+  if (stt) el.classList.remove("blocked");
+  if (isHtml) el.innerHTML = html; else el.textContent = html;
+}
+
+// ----------------------------------------------------------- VAD rankings
+// Same rule as the NC rankings: within ONE run, never averaged across runs,
+// and each pair shown as a Δ against a baseline pair from the same run
+// (default: production's VAD on the untouched audio, lk-inference × none).
+// The first category is the production question itself: which pairs open a
+// turn on every marked utterance and on nothing else, without fusing turns?
+// Ranked by overreach, because an always-open VAD also has zero misses and zero
+// phantoms, and only overreach / merged turns give it away. Every other event
+// category breaks ties the same way (merged turns, then overreach), so a
+// single giant segment can never sit on top of "Missed" or "Phantoms".
+const vrGate = (r) => {
+  const e = r.events || {};
+  return e.missed_n === 0 && e.phantom_n === 0 && e.merged_turns === 0 ? e.overreach_s : null;
+};
+const vrTie = (r) => [r.events?.merged_turns ?? 1e9, r.events?.overreach_s ?? 1e9];
+const VR_CATS = [
+  { key: "gate", label: "Incident gate: 0 missed · 0 phantoms · 0 merged, by overreach",
+    higher: false, hue: "var(--success)", fmt: (v) => v.toFixed(2) + " s over", get: vrGate },
+  { key: "missed", label: "Missed turns (PR-42)", higher: false, hue: "var(--mark)", fmt: vbInt,
+    get: (r) => r.events?.missed_n, tie: vrTie },
+  { key: "phantom", label: "Phantom segments (PR-54)", higher: false, hue: "var(--mark)", fmt: vbInt,
+    get: (r) => r.events?.phantom_n, tie: vrTie },
+  { key: "recall", label: "Turn recall", higher: true, hue: "var(--mark)", fmt: vbPct1,
+    get: (r) => r.events?.turn_recall, tie: vrTie },
+  { key: "merged", label: "Merged turns", higher: false, hue: "var(--mark)", fmt: vbInt,
+    get: (r) => r.events?.merged_turns },
+  { key: "overreach", label: "Overreach (unmarked s inside turn segments)", higher: false, hue: "var(--mark)",
+    fmt: (v) => v.toFixed(2) + " s", get: (r) => r.events?.overreach_s },
+  { key: "phantom_s", label: "Phantom seconds", higher: false, hue: "var(--mark)", fmt: (v) => v.toFixed(2) + " s",
+    get: (r) => r.events?.phantom_s },
+  { key: "missed_s", label: "Missed seconds", higher: false, hue: "var(--mark)", fmt: (v) => v.toFixed(2) + " s",
+    get: (r) => r.events?.missed_s },
+  { key: "lag", label: "Onset lag, median |·|", higher: false, hue: "var(--vad)", fmt: (v) => v.toFixed(3) + " s",
+    get: (r) => r.events?.onset_lag_med_s == null ? null : Math.abs(r.events.onset_lag_med_s) },
+  { key: "frag", label: "Fragmentation (segs per hit turn)", higher: false, hue: "var(--vad)", fmt: vbS2,
+    get: (r) => r.events?.frag },
+  { key: "agree", label: "Frame agreement", higher: true, hue: "var(--vad)", fmt: vbPct1,
+    get: (r) => r.frame?.agree },
+  { key: "fa", label: "False-alarm seconds (frame)", higher: false, hue: "var(--vad)", fmt: (v) => v.toFixed(2) + " s",
+    get: (r) => r.frame?.fa_s },
+  { key: "wer_same", label: "WER ✂ VAD-cut, same audio", higher: false, hue: "var(--brand)", fmt: vbPct1,
+    get: (r) => vbWer(r, "same") },
+  { key: "wer_raw", label: "WER ✂ VAD-cut, STT on raw", higher: false, hue: "var(--brand)", fmt: vbPct1,
+    get: (r) => vbWer(r, "raw") },
+  { key: "cpu", label: "CPU ms per audio-s", higher: false, hue: "var(--warning)", fmt: (v) => v.toFixed(1),
+    get: (r) => r.cpu_ms_per_s },
+];
+const VR_TOP = 10;
+
+function renderVadRankings(runId, meta) {
+  const div = $("vadRankings"), tools = $("vrTools");
+  // stale rows and rank-excluded rows (e.g. incomplete ai-coustics flags) never rank
+  const rows = vbRows(meta).filter((x) => vbRankable(x.r));
+  if (!rows.length) {
+    div.className = "hint";
+    div.textContent = "No VAD bench results on this run.";
+    tools.innerHTML = "";
+    return;
+  }
+  const pairs = rows.map((x) => `${x.vid}|${x.sid}`);
+  if (!pairs.includes(state.vbBaseline)) {
+    state.vbBaseline = pairs.includes("lk-inference|none") ? "lk-inference|none"
+      : pairs.includes("lk-inference|input") ? "lk-inference|input" : pairs[0];
+  }
+  const srcs = [...new Set(rows.map((x) => x.sid))];
+  const prevSrc = $("vrSrc") ? $("vrSrc").value : "";
+  const prevAll = $("vrAll") ? $("vrAll").checked : false;
+  tools.innerHTML = `— within run ${esc(runId)}, never across runs · Δ vs
+    <select id="vrBase">${pairs.map((p) => `<option value="${esc(p)}"${p === state.vbBaseline ? " selected" : ""}>${
+      esc(p.replace("|", " × "))}</option>`).join("")}</select>
+    <select id="vrSrc"><option value="">all sources</option>${srcs.map((s) =>
+      `<option value="${esc(s)}"${s === prevSrc ? " selected" : ""}>${esc(vbSrcLabel(s))}</option>`).join("")}</select>
+    <label><input type="checkbox" id="vrAll"${prevAll ? " checked" : ""} style="vertical-align:-1px" /> every row</label>`;
+  $("vrBase").onchange = () => { state.vbBaseline = $("vrBase").value; renderVbTable(meta); renderVadRankings(runId, meta); };
+  $("vrSrc").onchange = $("vrAll").onchange = () => renderVadRankings(runId, meta);
+  const srcSel = $("vrSrc").value, every = $("vrAll").checked;
+  const [bv, bs] = state.vbBaseline.split("|");
+  const baseR = (((meta.vad_bench || {}).results || {})[bs] || {})[bv];
+
+  div.innerHTML = ""; div.className = "";
+  const hasTruth = (meta.truth_spans || []).length > 0;
+  if (!hasTruth) {
+    const n = document.createElement("div");
+    n.className = "hint"; n.style.marginTop = "0";
+    n.innerHTML = "No marked speech on this run, so every event metric is null (not 0) and only "
+      + "cost / WER can rank. Mark speech on the input card to score turns.";
+    div.appendChild(n);
+  }
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px";
+  let any = false;
+  for (const cat of VR_CATS) {
+    const base = baseR ? cat.get(baseR) : null;
+    let rs = rows.filter((x) => !srcSel || x.sid === srcSel)
+      .map((x) => ({ key: `${x.vid}|${x.sid}`, vid: x.vid, sid: x.sid, v: cat.get(x.r),
+                     t: cat.tie ? cat.tie(x.r) : [0, 0] }))
+      .filter((x) => x.v != null && isFinite(x.v))
+      .sort((a, b) => (cat.higher ? b.v - a.v : a.v - b.v) || a.t[0] - b.t[0] || a.t[1] - b.t[1]);
+    // The gate is an answer even when it is "nobody": say so rather than hide it.
+    if (cat.key === "gate" && hasTruth && rs.length < 2) {
+      const box = document.createElement("div");
+      box.className = "vrcat";
+      box.style.setProperty("--accent", cat.hue);
+      box.innerHTML = `<div class="catlabel"><span>${cat.label}</span></div>
+        <div class="hint" style="margin-top:4px">${rs.length
+          ? `only <b>${esc(rs[0].vid)}</b> on ${esc(vbSrcLabel(rs[0].sid))} passes (${cat.fmt(rs[0].v)})`
+          : "no pair passes: every one misses a turn, opens a phantom or fuses turns"} on this run.
+          Two marked turns closer than min silence are fused by any VAD, which the marks
+          (not the model) may be the cause of.</div>`;
+      wrap.appendChild(box);
+      any = true;
+      continue;
+    }
+    if (rs.length < 2) continue;
+    any = true;
+    const total = rs.length;
+    if (!every && rs.length > VR_TOP) {
+      const baseRow = rs.find((x) => x.key === state.vbBaseline);
+      rs = rs.slice(0, VR_TOP);
+      if (baseRow && !rs.includes(baseRow)) rs.push(baseRow);
+    }
+    const box = document.createElement("div");
+    box.className = "vrcat";
+    box.style.setProperty("--accent", cat.hue);
+    let html = `<div class="catlabel"><span>${cat.label} ${cat.higher ? "↑" : "↓"}`
+      + (base != null ? ` <span style="color:var(--body-subtle)">· Δ vs baseline</span>` : "")
+      + (total > rs.length ? ` <span style="color:var(--body-subtle)">· top ${VR_TOP} of ${total}</span>` : "")
+      + `</span></div><table>`;
+    html += rs.map((r, i) => {
+      let delta = "";
+      if (base != null && isFinite(base) && r.key !== state.vbBaseline) {
+        const d = r.v - base, good = cat.higher ? d > 0 : d < 0;
+        const col = Math.abs(d) < 1e-9 ? "var(--body-subtle)" : good ? "var(--success-strong)" : "var(--danger-strong)";
+        delta = `<span style="color:${col}">${d >= 0 ? "+" : "−"}${cat.fmt(Math.abs(d))}</span>`;
+      }
+      const isBase = r.key === state.vbBaseline;
+      const col2 = isBase ? "var(--steel-strong)" : "var(--vad-strong)";
+      return `<tr class="rank${i === 0 ? " top" : ""}" data-vad="${esc(r.vid)}" title="${esc(r.vid)} on ${esc(vbSrcLabel(r.sid))}${isBase ? " (baseline)" : ""}">`
+        + `<td class="pos">${isBase && i >= VR_TOP ? "·" : i + 1}</td>`
+        + `<td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11px;color:${col2}">${esc(r.vid)}</td>`
+        + `<td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11px;color:var(--body-subtle)">${esc(vbSrcLabel(r.sid))}</td>`
+        + `<td style="text-align:right;font-family:var(--mono);color:var(--heading)">${cat.fmt(r.v)}</td>`
+        + `<td style="text-align:right;font-family:var(--mono);font-size:11px">${delta}</td></tr>`;
+    }).join("");
+    box.innerHTML = html + "</table>";
+    box.querySelectorAll("tr.rank").forEach((tr) => {
+      tr.title += " · click: show as cyan · shift-click: as white";
+      tr.onclick = (ev) => {
+        setPick(ev.shiftKey ? "white" : "cyan", tr.dataset.vad);
+        flash($("vadBenchBox"));
+      };
+    });
+    wrap.appendChild(box);
+  }
+  if (!any) {
+    if (hasTruth) { div.className = "hint"; div.textContent = "Nothing ranked yet."; }
+    return;
+  }
+  div.appendChild(wrap);
+}
+
 // ---------------------------------------------------------------- history
 async function loadHistory() {
   const runs = await api("/api/runs");
@@ -2113,13 +3232,20 @@ async function loadHistory() {
           title="${esc(r.note || "")}">${esc(r.note || "—")}</td>
       <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
           font-family:var(--mono);font-size:11px;color:var(--body-subtle)">${cands}</td>
-      <td style="font-family:var(--mono);font-size:11px">${r.status}${(r.candidates || []).some((c) => c.stt_seg)
-        ? ' <span style="color:var(--vad-strong)" title="has VAD-cut transcripts: one STT request per turn, live-realistic WER">✂</span>' : ""}</td>`
+      <td style="font-family:var(--mono);font-size:11px">${r.status}${hasVadCut(r)
+        ? ' <span style="color:var(--vad-strong)" title="has VAD-cut transcripts: one STT request per cut, live-realistic WER">✂</span>' : ""}</td>`
       + (EX ? "" : `<td style="text-align:right"><button class="mini danger"
            data-del="${esc(r.id)}" title="delete this run and its audio">✕</button></td>`);
     tr.onclick = () => loadRun(r.id);
     tb.appendChild(tr);
   }
+}
+
+function hasVadCut(r) {
+  for (const per of Object.values(((r.vad_bench || {}).results) || {})) {
+    for (const x of Object.values(per)) if (x.stt && Object.keys(x.stt).length) return true;
+  }
+  return false;
 }
 
 // Capture phase, not bubble: this listener sits ABOVE the row, so on the way up
@@ -2154,11 +3280,15 @@ function clearResults(msg) {
   $("rankRun").textContent = "";
   $("noteEdit").style.display = "none";
   $("scriptUsed").style.display = "none";
-  $("vadBar").style.display = "none";
   $("btnReproc").style.display = "none";
   state.runMeta = null;
-  state.vadSpans = {};
-  state.truth = []; state.marking = false; state.drag = null;
+  state.cyanSpans = {}; state.whiteSpans = {}; state.cyanVid = ""; state.whiteVid = "";
+  state.truth = []; state.marks = []; state.refDraft = {}; state.refStash = {}; state.marking = false; state.drag = null;
+  hideTip();
+  $("vbBody").className = "hint"; $("vbBody").textContent = msg;
+  $("vbRun").textContent = "";
+  $("vadRankings").className = "hint"; $("vadRankings").textContent = "";
+  $("vrTools").innerHTML = "";
 }
 
 // ------------------------------------------------------------------ init
@@ -2189,17 +3319,13 @@ function initLive() {
     concHint();
     state.vadLimits = c.vad_limits || {};
     state.vadDefaults = c.vad_defaults || {};
-    state.vadRates = c.vad_rates || [8000, 16000];
-    state.vadSourceRates = c.vad_source_rates || {};
-    if (c.vad_enabled === false) {
-      $("btnVad").disabled = true;
-      $("btnVad").title = "VAD_ENABLED is false in .env — no spans are computed";
-    }
-    // a run may already be loaded by the time /api/config lands
-    if (state.runMeta) showVadBar(state.runMeta);
+    // a run may already be loaded by the time /api/config lands: its bench
+    // parameter boxes are seeded from these
+    if (state.runMeta) renderVadBench(state.selectedRun, state.runMeta);
   }).catch(() => {});
   $("conc").onchange = concHint;
   loadCandidates();
+  loadVads();
   loadHistory();
   setPhase("idle");
 }
@@ -2209,17 +3335,16 @@ function initLive() {
 // rankings, waveforms, playback, history — is the whole point.
 function initExport() {
   document.querySelector("aside").remove();
-  // Keep the box — it holds the scale / height / VAD controls, which work fine
-  // offline. Only the live recording canvas and its hint have no meaning here.
+  // Keep the box for its hint; only the live recording canvas has no meaning
+  // here. The rail's view controls work offline too.
   $("timeline").remove();
   $("tlTitle").textContent = "View";
-  $("tlHint").innerHTML = `Scale and height apply to every waveform below —
-    <b>click any of them to play from that point</b>. The cyan bar along the bottom
-    of each waveform is Silero VAD speech: the turns a live deployment would cut and
-    sent to STT one at a time. A violet bar on top is hand-marked speech.`;
+  $("tlHint").innerHTML = `The scale, height, layer and snap controls on the right-hand rail apply
+    to every waveform below — <b>click any of them to play from that point</b>. The cyan bar
+    along the bottom of each waveform is the main VAD's speech (picked in the VAD bench box):
+    the turns a live deployment would cut and send to STT one at a time. A violet bar on top
+    is hand-marked speech; the thin bone-white bar is a second VAD to compare against.`;
   $("exportWrap").remove();
-  $("btnVad").remove();       // read-only: renderVadFields drops the inputs too
-  $("btnSeg").remove();
   $("histDelHead").remove();
   $("pillState").remove(); $("pillRoom").remove(); $("pillTimer").remove();
   const banner = document.createElement("div");
@@ -2252,21 +3377,127 @@ function concHint() {
       + "thread clock — though contention inflates them a little. Quality metrics "
       + "(DNSMOS, WER, band) are unaffected.";
 }
-// wave scale/height work identically in both modes — they only touch the canvases
-$("waveScale").innerHTML = WAVE_SCALES.map((s) =>
-  `<option value="${s.v}"${s.v === state.waveScale ? " selected" : ""}>${s.label}</option>`).join("");
-$("waveHeight").innerHTML = HEIGHT_MULS.map((m) =>
-  `<option value="${m}"${m === state.waveHeightSel ? " selected" : ""}>${m === "fit" ? "fit (no clip)" : m + "x"}</option>`).join("");
-$("waveScale").onchange = $("waveHeight").onchange = () => {
-  state.waveScale = $("waveScale").value;
-  state.waveHeightSel = $("waveHeight").value;
-  repaintAllWaves();
+// ---------------------------------------------------------------- the rail
+// Scale, height, the three layers and snap, for every waveform at once. They
+// work identically in an export — they only touch the canvases.
+const SNAP_ORDER = ["none", "marks", "cyan", "white"];
+const SNAP_LABEL = { none: "nothing", marks: "purple mark", cyan: "cyan VAD", white: "white VAD" };
+const SNAP_BADGE = { none: "off", marks: "mark", cyan: "cyan", white: "white" };
+function snapAvailable(k) {
+  if (k === "none") return true;
+  if (k === "marks") return state.show.marks && state.truth.length > 0;
+  return state.show[k] && Object.keys(k === "cyan" ? state.cyanSpans : state.whiteSpans).length > 0;
+}
+// the edges a click on this canvas snaps to, or null
+function snapSpans(canvasId) {
+  if (!snapAvailable(state.snap) || state.snap === "none") return null;
+  if (state.snap === "marks") {
+    const d = truthDur();
+    return d ? { segments: state.truth.map(([s, e]) => [s, e]), duration_s: d } : null;
+  }
+  return (state.snap === "cyan" ? state.cyanSpans : state.whiteSpans)[canvasId] || null;
+}
+const cycle = (arr, cur, back) =>
+  arr[((arr.indexOf(cur) < 0 ? 0 : arr.indexOf(cur)) + (back ? arr.length - 1 : 1)) % arr.length];
+const scaleLabel = () => (WAVE_SCALES.find((x) => x.v === state.waveScale) || {}).label || state.waveScale;
+const heightLabel = () => state.waveHeightSel === "fit" ? "fit" : state.waveHeightSel + "x";
+function renderRail() {
+  $("rcScaleV").textContent = scaleLabel();
+  $("rcScale").title = `wave scale: ${scaleLabel()} — click for the next, shift-click for the previous `
+    + `(${WAVE_SCALES.map((x) => x.label).join(" / ")}). dB shows residual noise without clipping speech.`;
+  $("rcHeightV").textContent = heightLabel();
+  $("rcHeight").title = `wave height: ${heightLabel()} — click for the next, shift-click for the previous `
+    + `(${HEIGHT_MULS.join(" / ")}). Taller buys headroom before linear gain clips; fit never clips.`;
+  const layers = [
+    ["rcMarks", "marks", "the purple marks: hand-marked speech, the top bar"],
+    ["rcCyan", "cyan", `the cyan VAD${state.cyanVid ? " (" + state.cyanVid + ")" : ""}: its wash and bottom bar, and the hover popup`],
+    ["rcWhite", "white", `the white compare VAD${state.whiteVid ? " (" + state.whiteVid + ")" : " (none picked)"}: the thin bar above the cyan one`],
+  ];
+  for (const [id, k, what] of layers) {
+    $(id).classList.toggle("off", !state.show[k]);
+    $(id).title = `${state.show[k] ? "hide" : "show"} ${what}`;
+  }
+  const eff = snapAvailable(state.snap) ? state.snap : "none";
+  $("rcSnapV").textContent = SNAP_BADGE[eff];
+  $("rcSnap").title = `click-to-play snaps to: ${SNAP_LABEL[eff]} edges — click to cycle through `
+    + SNAP_ORDER.filter(snapAvailable).map((k) => SNAP_LABEL[k]).join(" / ") + " (only layers that are shown)";
+}
+function toggleLayer(k) {
+  state.show[k] = !state.show[k];
+  savePrefs(); hideTip(); repaintAllWaves(); renderRail();
+}
+$("rcScale").onclick = (ev) => {
+  state.waveScale = cycle(WAVE_SCALES.map((x) => x.v), state.waveScale, ev.shiftKey);
+  savePrefs(); repaintAllWaves(); renderRail();
 };
-$("vadShow").onchange = () => {
-  state.vadShow = $("vadShow").checked;
-  repaintAllWaves();
+$("rcHeight").onclick = (ev) => {
+  state.waveHeightSel = cycle(HEIGHT_MULS, state.waveHeightSel, ev.shiftKey);
+  savePrefs(); repaintAllWaves(); renderRail();
 };
-$("vadSnap").onchange = () => { state.vadSnap = $("vadSnap").checked; };
+$("rcMarks").onclick = () => toggleLayer("marks");
+$("rcCyan").onclick = () => toggleLayer("cyan");
+$("rcWhite").onclick = () => toggleLayer("white");
+$("rcSnap").onclick = (ev) => {
+  const avail = SNAP_ORDER.filter(snapAvailable);
+  state.snap = cycle(avail, snapAvailable(state.snap) ? state.snap : "none", ev.shiftKey);
+  savePrefs(); renderRail();
+  setStatus("click-to-play snaps to " + SNAP_LABEL[state.snap] + (state.snap === "none" ? "" : " edges"));
+};
+
+// the sidebar folds away; the waveforms widen, so they are redrawn at the new width
+function setSide(hidden) {
+  const side = $("side");
+  if (!side) return;
+  side.classList.toggle("collapsed", hidden);
+  $("btnSide").textContent = hidden ? "⟩" : "⟨";
+  $("btnSide").title = hidden ? "show the sidebar"
+    : "hide the sidebar (Start/Stop, source, candidates, VAD models)";
+}
+if ($("btnSide")) {
+  $("btnSide").onclick = () => {
+    setSide(!$("side").classList.contains("collapsed"));
+    savePrefs(); repaintAllWaves();
+  };
+}
+
+// the viewer's last view settings, if storage kept them
+(() => {
+  const P = loadPrefs();
+  if (WAVE_SCALES.some((x) => x.v === P.waveScale)) state.waveScale = P.waveScale;
+  if (HEIGHT_MULS.includes(P.waveHeightSel)) state.waveHeightSel = P.waveHeightSel;
+  if (P.show && typeof P.show === "object") {
+    for (const k of ["marks", "cyan", "white"]) if (typeof P.show[k] === "boolean") state.show[k] = P.show[k];
+  }
+  if (SNAP_ORDER.includes(P.snap)) state.snap = P.snap;
+  if (P.sttMode === "same" || P.sttMode === "raw") state.sttMode = P.sttMode;
+  if (P.vcModes && typeof P.vcModes.same === "boolean" && typeof P.vcModes.raw === "boolean") {
+    state.vcModes = { same: P.vcModes.same, raw: P.vcModes.raw };
+  }
+  if (P.side) setSide(true);
+})();
+renderRail();
+
+// zoom keeps the middle of the view where it was; the slider pans
+$("viewZoom").innerHTML = VIEW_ZOOMS.map((z) =>
+  `<option value="${z}">${z === 1 ? "full" : z + "x"}</option>`).join("");
+$("viewZoom").onchange = () => {
+  const z = +$("viewZoom").value, mid = state.viewStart + viewSpan() / 2;
+  setView(z, mid - 1 / z / 2);
+};
+$("viewPos").oninput = () => setView(state.viewZoom, (+$("viewPos").value / 1000) * (1 - viewSpan()));
+$("viewReset").onclick = () => setView(1, 0);
+// shift+wheel, or a sideways trackpad swipe, over any waveform pans the view;
+// a plain vertical wheel is left alone so the page still scrolls
+document.addEventListener("wheel", (ev) => {
+  const cv = ev.target.closest && ev.target.closest("canvas.wave");
+  if (!cv || state.viewZoom === 1) return;
+  const d = ev.shiftKey ? ev.deltaY || ev.deltaX : Math.abs(ev.deltaX) > Math.abs(ev.deltaY) ? ev.deltaX : 0;
+  if (!d) return;
+  ev.preventDefault();
+  const w = cv.getBoundingClientRect().width || 1;
+  setView(state.viewZoom, state.viewStart + (d / w) * viewSpan());
+}, { passive: false });
+renderViewBar();
 
 if (EX) initExport(); else initLive();
 </script>

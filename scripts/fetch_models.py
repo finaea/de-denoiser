@@ -147,13 +147,57 @@ def verify(rel: str, dst: Path, want: str) -> bool:
     return False
 
 
+def fetch_aic(verify_only: bool) -> list[str]:
+    """The ai-coustics models the `aicsdk-*` candidates name, via the SDK's own
+    downloader. Returns the ids that failed.
+
+    Not rows in FILES, because there is no fixed file to pin: the CDN serves the
+    build that matches the installed aic-sdk's model format, and the SDK checks
+    each download against the manifest's own checksum. The model ids come from
+    candidates.json, so adding a candidate is enough to have its model fetched.
+    """
+    import json
+
+    sys.path.insert(0, str(ROOT))
+    try:
+        import aic_sdk  # noqa: F401
+
+        from nc_bench.processors.aic import fetch_model, model_file
+    except ImportError as e:
+        print(f"skip  ai-coustics models: {e}")
+        return []
+    ids = sorted({
+        s["model"]
+        for c in json.loads((ROOT / "candidates.json").read_text())
+        for s in c.get("chain") or []
+        if s.get("proc") == "aic" and s.get("model")
+    })
+    bad = []
+    for model_id in ids:
+        have = model_file(model_id)
+        if have or verify_only:
+            print(f"{'have ' if have else 'MISSING'}  aic/{have.name if have else model_id}")
+            if not have:
+                bad.append(model_id)
+            continue
+        print(f"get   aic/{model_id} <- ai-coustics CDN")
+        try:
+            path = fetch_model(model_id)
+            print(f"      done ({path.name}, {path.stat().st_size / 1e6:.1f} MB)")
+        except Exception as e:  # noqa: BLE001 - report every id, then fail once
+            print(f"FAILED aic/{model_id}: {e}")
+            bad.append(model_id)
+    return bad
+
+
 def main(argv: list[str]) -> None:
     only = [a for a in argv if not a.startswith("--")]
     verify_only = "--verify" in argv
+    want_aic = not only or "aic" in only
 
     todo = {k: v for k, v in FILES.items() if not only or any(o in k for o in only)}
-    if not todo:
-        sys.exit(f"nothing matched {only}; known: {sorted(FILES)}")
+    if not todo and not want_aic:
+        sys.exit(f"nothing matched {only}; known: {sorted(FILES)} and 'aic'")
 
     bad = []
     for rel, (url, want) in todo.items():
@@ -182,6 +226,9 @@ def main(argv: list[str]) -> None:
             continue
         tmp.rename(dst)
         print(f"      done ({dst.stat().st_size / 1e6:.1f} MB)")
+
+    if want_aic:
+        bad += fetch_aic(verify_only)
 
     if bad:
         sys.exit(
