@@ -25,7 +25,7 @@ never transcribed at all, and noise it mistakes for speech becomes a phantom tur
 ### Surfaces
 
 `source=phone` / `source=web` as recorded; uploads are classified by their note
-(`yh bg saved (phone)` → phone). Phone runs: PSTN leg over the SIP trunk,
+(`bg voices C saved (phone)` → phone). Phone runs: PSTN leg over the SIP trunk,
 ~3.5 kHz real bandwidth. Web runs: browser mic, wideband.
 
 ### Excluded from the STT ranking
@@ -38,16 +38,16 @@ consecutively.
 | run | note | why excluded |
 |---|---|---|
 | `20260804-174342` | noise test phone | passthrough transcript collapsed (top n-gram repeated x42) |
-| `20260804-103947` | Jasjeet Call (no reference) | no surface label / no passthrough |
-| `20260803-175858` | Hecttoc Sample (ignore reference) | no surface label / no passthrough |
-| `20260803-170156` | Daniel and hao bg | no reference script |
+| `20260804-103947` | real call (no reference) | no surface label / no passthrough |
+| `20260803-175858` | vendor sample (ignore reference) | no surface label / no passthrough |
+| `20260803-170156` | bg voices B | no reference script |
 
 Plus 2 individual candidate transcripts dropped inside otherwise-valid runs:
 
 | run | note | candidate | repetition |
 |---|---|---|---|
-| `20260804-171445` | shen | `gtcrn+hush` | ×73 |
-| `20260804-112511` | yh bg | `dpdfnet-baseline` | ×96 |
+| `20260804-171445` | bg voices D | `gtcrn+hush` | ×73 |
+| `20260804-112511` | bg voices C | `dpdfnet-baseline` | ×96 |
 
 VAD scoring is unaffected by transcript collapse (it never reads a transcript),
 so those runs still count there.
@@ -374,7 +374,7 @@ answer is strictly better: Hecttor ASR on phone, passthrough on web.
 
 - Sample sizes are 8–10 runs; a `worst` column is a single tail sample. Margins in
   the STT tables are ~1 word on ~30-word scripts.
-- The `aisyah cheelam bg` condition contributes 5 of 16 valid runs (two of them
+- The `bg voices E` condition contributes 5 of 16 valid runs (two of them
   the same phone script twice), so that room is over-weighted.
 - Hand marks are drawn on the raw waveform by eye; sub-100 ms edges are subjective.
   Deltas vs passthrough cancel most of this; absolute miss/agree values inherit it.
